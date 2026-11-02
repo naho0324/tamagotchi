@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: pixel-tamagotchi
+    runtime: node
+    plan: free
+    buildCommand: npm ci --omit=dev
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      # Free plan has an ephemeral filesystem: data.json resets on each deploy/restart.
+      # On a paid plan, add a disk and set DATA_DIR to its mount path, e.g.:
+      # - key: DATA_DIR
+      #   value: /var/data
+    # disk:
+    #   name: data
+    #   mountPath: /var/data
+    #   sizeGB: 1

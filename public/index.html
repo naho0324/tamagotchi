@@ -1,0 +1,63 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>픽셀 다마고치</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/galmuri@latest/dist/galmuri.css">
+<link rel="stylesheet" href="style.css"></head><body>
+<div id="app">
+  <!-- HOME -->
+  <section id="home" class="screen">
+    <div class="hud">
+      <div class="coin"><span class="coin-ico"></span><b id="coins">0</b></div>
+      <div class="stat"><span>🍗</span><i><em id="b-hunger" class="c-blue"></em></i></div>
+      <div class="stat"><span>💗</span><i><em id="b-happy" class="c-pink"></em></i></div>
+      <div class="stat"><span>⚡</span><i><em id="b-energy" class="c-green"></em></i></div>
+      <div class="stat"><span>💧</span><i><em id="b-clean" class="c-sky"></em></i></div>
+    </div>
+    <div class="stage"><canvas id="room" width="480" height="270"></canvas>
+      <div id="status" class="status"></div></div>
+    <div class="buttons">
+      <button data-act="feed" class="b-green"><span>🥣</span>밥</button>
+      <button data-act="play" class="b-pink"><span>⚽</span>놀기</button>
+      <button data-act="sleep" class="b-blue"><span>🌙</span>잠</button>
+      <button data-act="wash" class="b-pink2"><span>🚿</span>씻기</button>
+      <button data-act="shop" class="b-rose"><span>🏪</span>상점</button>
+      <button data-act="plaza" class="b-purple"><span>🌏</span>광장</button>
+    </div>
+  </section>
+  <!-- PLAZA -->
+  <section id="plaza" class="screen hidden">
+    <div class="topbar"><button id="plaza-back" class="small">← 집으로</button><b>광장</b><span id="plaza-count"></span></div>
+    <canvas id="plazaCv" width="480" height="300"></canvas>
+    <div class="row"><input id="chat" maxlength="40" placeholder="말하기..."><button id="chat-send" class="small">전송</button></div>
+    <div class="row"><button id="match" class="big b-pink">🏐 배구 매칭</button><button id="practice" class="big b-blue">🤖 연습 경기</button></div>
+    <div class="row"><button id="snake-btn" class="big b-green">🐍 스네이크 (1~6명)</button></div>
+    <div id="match-status" class="hint">화면을 눌러 이동해요</div>
+  </section>
+  <!-- SNAKE -->
+  <section id="snake" class="screen hidden">
+    <div class="topbar"><button id="s-back" class="small">← 나가기</button><b>스네이크</b><span id="s-time"></span></div>
+    <div id="s-lobby" class="box lobby"><h3>대기실</h3><div id="s-players"></div><p id="s-info" class="hint"></p>
+      <button id="s-start" class="big b-pink">시작</button></div>
+    <canvas id="sCv" width="480" height="320" class="hidden"></canvas>
+    <div id="s-scores" class="hint"></div>
+    <div class="touch dpad"><button data-d="left">◀</button><button data-d="up">▲</button><button data-d="down">▼</button><button data-d="right">▶</button></div>
+    <div class="hint">← ↑ → ↓ / WASD · 화면 스와이프 · 벽·다른 뱀·내 몸에 닿으면 탈락!</div>
+  </section>
+  <!-- VOLLEY -->
+  <section id="volley" class="screen hidden">
+    <div class="topbar"><button id="v-quit" class="small">기권</button><b id="v-score">0 : 0</b><span id="v-names"></span></div>
+    <canvas id="vCv" width="480" height="300"></canvas>
+    <div class="touch"><button data-k="left">◀</button><button data-k="right">▶</button><button data-k="up" class="jump">점프</button></div>
+    <div class="hint">← → / A D 이동, ↑ / W / 스페이스 점프 · 7점 먼저!</div>
+  </section>
+</div>
+<!-- modals -->
+<div id="nick-modal" class="modal hidden"><div class="box"><h2>반가워요!</h2><p>닉네임을 정해주세요</p>
+  <input id="nick" maxlength="12" placeholder="닉네임"><button id="nick-ok" class="big b-green">시작하기</button></div></div>
+<div id="shop-modal" class="modal hidden"><div class="box"><h2>상점</h2><div id="shop-list"></div><h3>가방</h3><div id="inv-list"></div>
+  <button class="big b-blue" onclick="closeModal('shop-modal')">닫기</button></div></div>
+<div id="end-modal" class="modal hidden"><div class="box"><h2 id="end-title"></h2><p id="end-msg"></p><button class="big b-green" id="end-ok">확인</button></div></div>
+<div id="toast"></div>
+<script src="/socket.io/socket.io.js"></script>
+<script src="pet.js"></script><script src="app.js"></script>
+</body></html>

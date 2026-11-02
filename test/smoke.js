@@ -1,0 +1,16 @@
+const { io } = require('socket.io-client');
+const URL = process.env.URL || 'http://localhost:3456';
+const mk = (id, n) => io(URL, { auth: { playerId: id, nickname: n }, transports: ['websocket'] });
+const a = mk('testaaaa-1111', '테스트A'), b = mk('testbbbb-2222', '테스트B');
+let ticks = 0, start = 0, points = 0;
+a.on('state', s => { if (!start++) { console.log('A state stage', s.pet.stage, 'coins', s.coins);
+  a.emit('act', { action: 'buy', arg: 'snack' }, r => console.log('buy:', r));
+  a.emit('plaza:join'); b.emit('plaza:join'); setTimeout(() => { a.emit('v:queue'); setTimeout(() => b.emit('v:queue'), 200); }, 300); } });
+a.on('plaza:state', l => { if (l.length === 2 && !a._p) { a._p = 1; console.log('plaza sees', l.map(e => e.nickname)); } });
+a.on('v:waiting', () => console.log('A waiting'));
+a.on('v:start', d => { console.log('A start side', d.side, d.players.map(p => p.nickname)); });
+b.on('v:start', d => console.log('B start side', d.side));
+a.on('v:state', s => { ticks++; });
+a.on('v:point', p => { points++; console.log('point', p.score); if (points === 2) { console.log('ticks', ticks, '-> B forfeits'); b.emit('v:leave'); } });
+a.on('v:end', d => { console.log('A end', d); setTimeout(() => process.exit(0), 300); });
+setTimeout(() => { console.log('TIMEOUT'); process.exit(1); }, 40000);
