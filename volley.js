@@ -59,7 +59,7 @@ class Match {
       this.serve(scorer);
     }
   }
-  snapshot() { return { p: this.p.map(q => [Math.round(q.x), Math.round(q.y)]), b: [Math.round(this.ball.x), Math.round(this.ball.y)], s: this.score, pause: this.pause > 0 }; }
+  snapshot() { return { k: this.tick, p: this.p.map(q => [+q.x.toFixed(1), +q.y.toFixed(1), +q.vy.toFixed(2)]), b: [+this.ball.x.toFixed(1), +this.ball.y.toFixed(1)], s: this.score, pause: this.pause > 0 }; }
   setInput(socketId, inp) { const i = this.players.findIndex(p => p.socketId === socketId); if (i >= 0) this.inputs[i] = { left: !!inp.left, right: !!inp.right, up: !!inp.up }; }
   leave(socketId) { const i = this.players.findIndex(p => p.socketId === socketId); if (i >= 0 && !this.over) this.end(1 - i, true); }
   end(winner, forfeit = false) { this.over = true; clearInterval(this.timer); this.onEnd(this, winner, forfeit); }

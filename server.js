@@ -12,7 +12,7 @@ setInterval(() => { if (dirty) { dirty = false; fs.writeFileSync(DATA + '.tmp', 
 
 const app = express(); app.use(express.static(path.join(__dirname, 'public')));
 app.get('/health', (q, r) => r.json({ ok: true, online: io.engine.clientsCount }));
-const server = http.createServer(app), io = new Server(server);
+const server = http.createServer(app), io = new Server(server, { transports: ['websocket'], perMessageDeflate: false });
 const plaza = new Map(); // socketId -> {id, x, y, ...look}
 let queue = null;
 const snake = new SnakeLobby(null, results => {

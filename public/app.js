@@ -10,7 +10,7 @@ function getIdentity() { const id = localStorage.getItem('tg_pid'), nick = local
 function start() {
   const ident = getIdentity();
   if (!ident) { $('#nick-modal').classList.remove('hidden'); $('#nick').focus(); return; }
-  socket = io({ auth: ident });
+  socket = io({ auth: ident, transports: ['websocket'] });
   socket.on('connect_error', e => toast('연결 실패: ' + e.message));
   socket.on('state', st => { S = st; clockSkew = st.now - Date.now(); renderHud(); });
   bindSocket();
@@ -51,11 +51,29 @@ function drawRoom(t) {
   rctx.globalAlpha = 1;
 }
 const EMO = { feed: '🍚', play: '💗', wash: '🫧', sleep: '💤', use: '✨' };
+// Optimistic local prediction; server state (sent right after) is authoritative and overwrites it.
+const OPT_MSG = { feed: '냠냠! 배불러요', play: '신나요!', wash: '뽀득뽀득 깨끗해요' };
+function predict(action, arg) {
+  if (!S) return false; const p = S.pet, st = p.stats, alive = !['egg', 'dead'].includes(p.stage), c = v => Math.max(0, Math.min(100, v));
+  if (['feed', 'play', 'sleep', 'wash'].includes(action) && !alive) return false;
+  if (action === 'feed' && !p.sleeping) st.hunger = c(st.hunger + 25);
+  else if (action === 'play' && !p.sleeping && st.energy >= 10) { st.happy = c(st.happy + 20); st.energy = c(st.energy - 8); st.hunger = c(st.hunger - 3); }
+  else if (action === 'wash') st.clean = 100;
+  else if (action === 'sleep') p.sleeping = !p.sleeping;
+  else if (action === 'buy' && S.shop[arg] && S.coins >= S.shop[arg].price) { S.coins -= S.shop[arg].price; if (S.shop[arg].type === 'consumable') S.inventory[arg] = (S.inventory[arg] || 0) + 1; else if (!S.owned.includes(arg)) S.owned.push(arg); }
+  else if (action === 'equip' && S.shop[arg]) { const slot = S.shop[arg].type === 'hat' ? 'hat' : 'clothes'; S.wearing[slot] = S.wearing[slot] === arg ? null : arg; }
+  else if (action === 'use' && S.inventory[arg] > 0) { S.inventory[arg]--; if (arg === 'snack') { st.hunger = c(st.hunger + 40); st.happy = c(st.happy + 10); } else p.sick = false; }
+  else return false;
+  return true;
+}
 function act(action, arg) {
+  const ok = predict(action, arg);
+  if (ok) { renderHud(); if (EMO[action]) for (let i = 0; i < 3; i++) fx.push({ e: EMO[action], x: 200 + Math.random() * 80, y: 140 + Math.random() * 30, t0: performance.now() + i * 120 }); }
+  const t0 = performance.now();
   socket.emit('act', { action, arg }, r => {
-    toast(r.msg + (r.coins ? ` (+${r.coins}코인)` : ''));
-    if (r.ok && EMO[action]) for (let i = 0; i < 3; i++) fx.push({ e: EMO[action], x: 200 + Math.random() * 80, y: 140 + Math.random() * 30, t0: performance.now() + i * 120 });
+    if (!r.ok || !ok || r.coins || performance.now() - t0 > 400) toast(r.msg + (r.coins ? ` (+${r.coins}코인)` : ''));
   });
+  if (ok && OPT_MSG[action]) toast(OPT_MSG[action]);
 }
 document.querySelectorAll('.buttons button').forEach(b => b.onclick = () => {
   const a = b.dataset.act;
@@ -129,7 +147,7 @@ function drawPlaza(t) {
 const vcv = $('#vCv'), vctx = vcv.getContext('2d'); vctx.imageSmoothingEnabled = false;
 let V = null; const keys = { left: false, right: false, up: false };
 const KEYMAP = { ArrowLeft: 'left', a: 'left', A: 'left', ArrowRight: 'right', d: 'right', D: 'right', ArrowUp: 'up', w: 'up', W: 'up', ' ': 'up' };
-function sendInput() { if (V) socket.emit('v:input', keys); }
+function sendInput() { if (V) socket.emit('v:input', { left: keys.left, right: keys.right, up: keys.up }); }
 addEventListener('keydown', e => { const k = KEYMAP[e.key]; if (k && V) { e.preventDefault(); if (!keys[k]) { keys[k] = true; sendInput(); } } });
 addEventListener('keyup', e => { const k = KEYMAP[e.key]; if (k && V) { keys[k] = false; sendInput(); } });
 document.querySelectorAll('.touch button').forEach(b => {
@@ -137,14 +155,34 @@ document.querySelectorAll('.touch button').forEach(b => {
   b.addEventListener('pointerdown', on(true)); b.addEventListener('pointerup', on(false)); b.addEventListener('pointerleave', on(false)); b.addEventListener('pointercancel', on(false));
 });
 $('#v-quit').onclick = () => socket.emit('v:leave');
+// physics constants mirror volley.js
+const VW = 480, VG = 270, VPR = 26, VNET = 240, VNW = 8, INTERP_MS = 70;
+function predictStep(me, side) {
+  if (keys.left) me.x -= 5; if (keys.right) me.x += 5;
+  if (keys.up && me.y >= VG - VPR - 0.1) me.vy = -10.5;
+  me.vy += 0.45; me.y += me.vy; if (me.y > VG - VPR) { me.y = VG - VPR; me.vy = 0; }
+  const lo = side === 0 ? VPR : VNET + VNW / 2 + VPR, hi = side === 0 ? VNET - VNW / 2 - VPR : VW - VPR;
+  me.x = Math.max(lo, Math.min(hi, me.x));
+}
+function interpSnap(now) { // returns {p, b} interpolated at now-INTERP_MS
+  const buf = V.buf, rt = now - INTERP_MS; if (!buf.length) return null;
+  let i = buf.length - 1; while (i > 0 && buf[i - 1].t > rt) i--;
+  const b = buf[i], a = buf[i - 1] || b; if (a === b || rt >= b.t) return b.st;
+  const k = Math.max(0, Math.min(1, (rt - a.t) / (b.t - a.t))), L = (x, y) => x + (y - x) * k;
+  return { p: b.st.p.map((q, j) => [L(a.st.p[j][0], q[0]), L(a.st.p[j][1], q[1])]), b: [L(a.st.b[0], b.st.b[0]), L(a.st.b[1], b.st.b[1])], pause: b.st.pause };
+}
 function drawVolley(t) {
   const c = vctx; c.fillStyle = '#bfe3f7'; c.fillRect(0, 0, 480, 300);
   c.fillStyle = '#fff'; c.fillRect(40, 40, 60, 14); c.fillRect(360, 60, 70, 14);
   c.fillStyle = '#ffe98a'; c.fillRect(400, 20, 30, 30); c.fillStyle = '#f5deb3'; c.fillRect(0, 270, 480, 30); c.fillStyle = '#1d2557'; c.fillRect(0, 268, 480, 3);
   c.fillStyle = '#1d2557'; c.fillRect(236, 170, 8, 100); c.fillStyle = '#fff'; c.fillRect(238, 172, 4, 96);
   if (!V || !V.state) return;
-  const s = V.state;
-  s.p.forEach(([x, y], i) => {
+  // advance local prediction at fixed 60Hz
+  const now = performance.now(); V.acc += Math.min(250, now - (V.lastT || now)); V.lastT = now;
+  while (V.acc >= 1000 / 60) { predictStep(V.pred, V.side); V.acc -= 1000 / 60; }
+  const s = interpSnap(now) || V.state;
+  const pos = s.p.map((q, i) => i === V.side ? [V.pred.x, V.pred.y] : q);
+  pos.forEach(([x, y], i) => {
     const look = V.players[i]; drawPet(c, x, y + 26, 62, look.stage === 'egg' ? { ...look, stage: 'baby' } : look, t, { walking: true });
     c.font = '11px Galmuri9, monospace'; c.textAlign = 'center'; c.fillStyle = i === V.side ? '#c2455a' : '#1d2557'; c.fillText(look.nickname + (i === V.side ? ' (나)' : ''), x, y - 44); c.textAlign = 'left';
   });
@@ -161,11 +199,19 @@ $('#snake-btn').onclick = () => { socket.emit('plaza:leave'); socket.emit('v:can
 $('#s-back').onclick = () => { socket.emit('s:leave'); SN = null; enterPlaza(); };
 $('#s-start').onclick = () => socket.emit('s:start');
 const SKEY = { ArrowUp: 'up', w: 'up', W: 'up', ArrowDown: 'down', s: 'down', S: 'down', ArrowLeft: 'left', a: 'left', A: 'left', ArrowRight: 'right', d: 'right', D: 'right' };
-addEventListener('keydown', e => { if (SN && SKEY[e.key]) { e.preventDefault(); socket.emit('s:dir', SKEY[e.key]); } });
-document.querySelectorAll('.dpad button').forEach(b => b.addEventListener('pointerdown', e => { e.preventDefault(); socket.emit('s:dir', b.dataset.d); }));
+const SD = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
+function myServerSnake() { return SN && SN.cur && SN.cur.s.find(s => s.sid === socket.id); }
+function turn(d) { // queue up to 2 turns locally (same rule as server) and send immediately
+  const me = myServerSnake(); if (!me || !me.a) return;
+  const last = SN.q.length ? SN.q[SN.q.length - 1] : me.d; if (last === d) return;
+  if (SD[last][0] + SD[d][0] === 0 && SD[last][1] + SD[d][1] === 0) return;
+  if (SN.q.length < 2) { SN.q.push(d); socket.emit('s:dir', d); }
+}
+addEventListener('keydown', e => { if (SN && SKEY[e.key]) { e.preventDefault(); turn(SKEY[e.key]); } });
+document.querySelectorAll('.dpad button').forEach(b => b.addEventListener('pointerdown', e => { e.preventDefault(); turn(b.dataset.d); }));
 let sw = null; scv.addEventListener('pointerdown', e => sw = [e.clientX, e.clientY]);
 scv.addEventListener('pointerup', e => { if (!sw) return; const dx = e.clientX - sw[0], dy = e.clientY - sw[1]; sw = null; if (Math.max(Math.abs(dx), Math.abs(dy)) < 20) return;
-  socket.emit('s:dir', Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up')); });
+  turn(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up')); });
 function renderLobby(l) {
   snLobby = l; const pl = $('#s-players'); pl.innerHTML = '';
   l.players.forEach(p => { const d = document.createElement('div'); d.className = 'item';
@@ -177,13 +223,17 @@ function renderLobby(l) {
 function drawSnake(t) {
   const c = sctx; c.fillStyle = '#fff5f8'; c.fillRect(0, 0, 480, 320);
   c.fillStyle = '#fbe3ea'; for (let x = 0; x < 30; x++) for (let y = 0; y < 20; y++) if ((x + y) % 2) c.fillRect(x * CELL, y * CELL, CELL, CELL);
-  if (!SN || !SN.state) return; const st = SN.state;
+  if (!SN || !SN.cur) return; const st = SN.cur;
+  const k = Math.min(1, (performance.now() - SN.tAt) / SN.tick); // extrapolate toward next cell
+  const cellPx = (x, y) => [x * CELL, y * CELL];
   for (const [x, y] of st.f) { c.fillStyle = '#1d2557'; c.fillRect(x * CELL + 2, y * CELL + 2, 12, 12); c.fillStyle = '#ffd23f'; c.fillRect(x * CELL + 4, y * CELL + 4, 8, 8); c.fillStyle = '#fff'; c.fillRect(x * CELL + 5, y * CELL + 5, 3, 3); }
   for (const s of st.s) {
     c.globalAlpha = s.a ? 1 : 0.3;
-    s.b.slice(1).forEach(([x, y]) => { c.fillStyle = '#1d2557'; c.fillRect(x * CELL, y * CELL, CELL, CELL); c.fillStyle = s.c; c.fillRect(x * CELL + 2, y * CELL + 2, 12, 12); });
-    const [hx, hy] = s.b[0]; c.fillStyle = '#1d2557'; c.fillRect(hx * CELL - 1, hy * CELL - 1, CELL + 2, CELL + 2); c.fillStyle = s.c; c.fillRect(hx * CELL + 1, hy * CELL + 1, 14, 14);
-    const look = s.look.stage === 'egg' || s.look.stage === 'dead' ? { ...s.look, stage: 'baby' } : { ...s.look, stage: 'baby' };
+    const dir = s.sid === socket.id && SN.q.length ? SN.q[0] : s.d, mv = s.a ? k : 0;
+    const pts = s.b.map(([x, y], i) => { const [nx, ny] = i === 0 ? [x + SD[dir][0], y + SD[dir][1]] : s.b[i - 1]; return [x + (nx - x) * mv, y + (ny - y) * mv]; });
+    pts.slice(1).reverse().forEach(([x, y]) => { c.fillStyle = '#1d2557'; c.fillRect(x * CELL, y * CELL, CELL, CELL); c.fillStyle = s.c; c.fillRect(x * CELL + 2, y * CELL + 2, 12, 12); });
+    const [hx, hy] = pts[0]; c.fillStyle = '#1d2557'; c.fillRect(hx * CELL - 1, hy * CELL - 1, CELL + 2, CELL + 2); c.fillStyle = s.c; c.fillRect(hx * CELL + 1, hy * CELL + 1, 14, 14);
+    const look = { ...(SN.looks[s.sid] || {}), stage: 'baby' };
     drawPet(c, hx * CELL + 8, hy * CELL + 18, 22, look, t, { still: true });
     c.font = '10px Galmuri9, monospace'; c.textAlign = 'center'; c.fillStyle = '#1d2557'; c.fillText(s.n + (s.sid === socket.id ? '(나)' : ''), hx * CELL + 8, hy * CELL - 8); c.textAlign = 'left';
     c.globalAlpha = 1;
@@ -192,8 +242,9 @@ function drawSnake(t) {
 function bindSocket() {
   socket.on('toast', toast);
   socket.on('s:lobby', l => { if (!$('#snake').classList.contains('hidden')) renderLobby(l); });
-  socket.on('s:start', () => { SN = { state: null }; $('#s-lobby').classList.add('hidden'); $('#sCv').classList.remove('hidden'); });
-  socket.on('s:state', st => { if (!SN) return; SN.state = st; $('#s-time').textContent = `⏱ ${st.t}초`;
+  socket.on('s:start', d => { SN = { cur: null, q: [], looks: d.looks || {}, tick: d.tick || 100, tAt: 0 }; $('#s-lobby').classList.add('hidden'); $('#sCv').classList.remove('hidden'); });
+  socket.on('s:state', st => { if (!SN) return; SN.cur = st; SN.tAt = performance.now();
+    const me = st.s.find(s => s.sid === socket.id); if (me) { if (SN.q.length && SN.q[0] === me.d) SN.q.shift(); if (!me.a) SN.q = []; } $('#s-time').textContent = `⏱ ${st.t}초`;
     $('#s-scores').textContent = st.s.map(s => `${s.a ? '' : '💀'}${s.n} ${s.b.length}`).join(' · '); });
   socket.on('s:end', res => { SN = null; const me = res.find(r => r.sid === socket.id);
     $('#end-title').textContent = me && me.rank === 1 ? (res.length > 1 ? '🏆 1등!' : '🐍 게임 끝!') : `${me ? me.rank : '-'}등`;
@@ -201,9 +252,13 @@ function bindSocket() {
     $('#end-modal').classList.remove('hidden'); });
   socket.on('plaza:state', l => plazaList = l);
   socket.on('v:waiting', () => $('#match-status').textContent = '상대를 찾는 중... (다른 사람이 매칭을 누르면 시작!)');
-  socket.on('v:start', d => { V = { ...d, state: null }; Object.keys(keys).forEach(k => keys[k] = false);
+  socket.on('v:start', d => { V = { ...d, state: null, buf: [], acc: 0, lastT: 0, pred: { x: d.side === 0 ? 90 : 390, y: 244, vy: 0 } }; Object.keys(keys).forEach(k => keys[k] = false);
     $('#v-names').textContent = `${d.players[0].nickname} vs ${d.players[1].nickname}`; show('volley'); });
-  socket.on('v:state', st => { if (V) { V.state = st; $('#v-score').textContent = `${st.s[0]} : ${st.s[1]}`; } });
+  socket.on('v:state', st => { if (V) { V.state = st; V.buf.push({ t: performance.now(), st }); if (V.buf.length > 20) V.buf.shift();
+    // reconcile own predicted position toward server (soft), snap if far off
+    const [sx, sy, svy] = st.p[V.side], me = V.pred;
+    if (Math.abs(sx - me.x) > 60 || Math.abs(sy - me.y) > 80) { me.x = sx; me.y = sy; me.vy = svy; }
+    else { me.x += (sx - me.x) * 0.06; if (sy >= 243.9 && me.y >= 243.9) me.y = sy; } $('#v-score').textContent = `${st.s[0]} : ${st.s[1]}`; } });
   socket.on('v:end', d => { const win = V && d.winner === V.side; V = null;
     $('#end-title').textContent = win ? '🏆 승리!' : '😢 패배...';
     $('#end-msg').textContent = `${d.score[0]} : ${d.score[1]}` + (d.forfeit ? ' (기권)' : '') + (d.reward ? ` · +${d.reward}코인` : '');

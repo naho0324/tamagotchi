@@ -32,21 +32,23 @@ class SnakeLobby {
     clearInterval(this.autoTimer); this.autoTimer = null; this.countdown = null;
     this.state = 'playing'; this.ticks = 0; this.deathOrder = []; this.food = [];
     this.snakes = this.players.map((p, i) => { const [x, y, d] = SPAWNS[i], [dx, dy] = DIRS[d];
-      return { sid: p.sid, color: p.color, nickname: p.look.nickname, look: p.look, dir: d, next: d, alive: true, grow: 0,
+      return { sid: p.sid, color: p.color, nickname: p.look.nickname, look: p.look, dir: d, queue: [], alive: true, grow: 0,
         body: [[x, y], [x - dx, y - dy], [x - 2 * dx, y - 2 * dy]] }; });
     for (let i = 0; i < Math.max(3, this.snakes.length + 2); i++) this.spawnFood();
-    this.emitLobby(); this.io.to(this.room).emit('s:start', { cols: COLS, rows: ROWS, time: TIME_LIMIT });
+    this.emitLobby(); this.io.to(this.room).emit('s:start', { cols: COLS, rows: ROWS, time: TIME_LIMIT, tick: TICK, looks: Object.fromEntries(this.snakes.map(s => [s.sid, s.look])) });
     this.timer = setInterval(() => this.step(), TICK); return null;
   }
-  setDir(sid, d) { const s = this.snakes && this.snakes.find(s => s.sid === sid); if (!s || !DIRS[d]) return;
-    const [cx, cy] = DIRS[s.dir], [nx, ny] = DIRS[d]; if (cx + nx === 0 && cy + ny === 0) return; s.next = d; }
+  setDir(sid, d) { const s = this.snakes && this.snakes.find(s => s.sid === sid); if (!s || !s.alive || !DIRS[d]) return;
+    const last = s.queue.length ? s.queue[s.queue.length - 1] : s.dir; if (last === d) return;
+    const [cx, cy] = DIRS[last], [nx, ny] = DIRS[d]; if (cx + nx === 0 && cy + ny === 0) return;
+    if (s.queue.length < 2) s.queue.push(d); }
   occupied(x, y) { return this.snakes.some(s => s.alive && s.body.some(([a, b]) => a === x && b === y)) || this.food.some(([a, b]) => a === x && b === y); }
   spawnFood() { for (let k = 0; k < 200; k++) { const x = Math.floor(Math.random() * COLS), y = Math.floor(Math.random() * ROWS); if (!this.occupied(x, y)) { this.food.push([x, y]); return; } } }
   kill(s) { s.alive = false; this.deathOrder.push(s); }
   step() {
     this.ticks++;
     const alive = this.snakes.filter(s => s.alive);
-    const heads = alive.map(s => { s.dir = s.next; const [dx, dy] = DIRS[s.dir]; return [s, [s.body[0][0] + dx, s.body[0][1] + dy]]; });
+    const heads = alive.map(s => { if (s.queue.length) s.dir = s.queue.shift(); const [dx, dy] = DIRS[s.dir]; return [s, [s.body[0][0] + dx, s.body[0][1] + dy]]; });
     for (const [s, h] of heads) { // move (tail moves first unless growing)
       s.body.unshift(h); if (s.grow > 0) s.grow--; else s.body.pop();
       const fi = this.food.findIndex(([a, b]) => a === h[0] && b === h[1]);
@@ -60,7 +62,7 @@ class SnakeLobby {
     // simultaneous deaths: shorter dies "first" (ranks lower)
     dead.sort((a, b) => a.body.length - b.body.length).forEach(s => this.kill(s));
     const left = TIME_LIMIT - Math.floor(this.ticks * TICK / 1000);
-    this.io.to(this.room).emit('s:state', { f: this.food, t: left, s: this.snakes.map(s => ({ sid: s.sid, c: s.color, n: s.nickname, a: s.alive, b: s.body, look: s.look })) });
+    this.io.to(this.room).emit('s:state', { f: this.food, t: left, s: this.snakes.map(s => ({ sid: s.sid, c: s.color, n: s.nickname, a: s.alive, b: s.body, d: s.dir })) });
     const nAlive = this.snakes.filter(s => s.alive).length;
     if (nAlive === 0 || (this.snakes.length > 1 && nAlive <= 1) || left <= 0) this.end();
   }
