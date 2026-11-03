@@ -84,8 +84,7 @@ function act(player, action, arg, now) {
       player.wearing[it.type === 'hat' ? 'hat' : 'clothes'] = player.wearing[it.type] === arg ? null : arg;
       return { msg: '갈아입었어요!' };
     }
-    case 'choose': if (!validChar(arg)) return '없는 캐릭터'; if (p.stage !== 'egg') return '알일 때만 고를 수 있어요'; p.char = +arg; return { msg: '캐릭터를 골랐어요!' };
-    case 'restart': if (p.stage !== 'dead') return '아직 살아있어요'; player.pet = newPet(now, arg); return { msg: '새 알이 왔어요!' };
+    case 'restart': if (p.stage !== 'dead') return '아직 살아있어요'; player.pet = newPet(now); return { msg: '새 알이 왔어요!' };
   }
   return '알 수 없는 행동';
 }

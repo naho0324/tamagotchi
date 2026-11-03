@@ -29,9 +29,3 @@ button:active{transform:translateY(3px);box-shadow:0 1px 0 #1d2557}
 .lobby{width:auto;max-height:none}.lobby .item span.dot{display:inline-block;width:14px;height:14px;border:2px solid #1d2557;margin-right:6px;vertical-align:middle}
 .dpad button{font-size:20px}@media(min-width:700px){.dpad{display:none}}
 canvas, img { image-rendering: pixelated; image-rendering: crisp-edges; }
-#char-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 8px 0; }
-#char-grid .char { background: #fff5f8; border: 3px solid #1d2557; padding: 4px 2px; display: flex; align-items: flex-end; justify-content: center; gap: 2px; cursor: pointer; min-height: 72px; min-width: 0; }
-#char-grid .char img { height: 56px; width: auto; }
-#char-grid .char img:first-child { display: none; }
-#char-grid .char img + img { height: 64px; }
-#char-grid .char.sel, #char-grid .char:hover { background: #f7a8c4; }

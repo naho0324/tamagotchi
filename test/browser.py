@@ -12,8 +12,7 @@ async def main():
             pg.on('pageerror', lambda e: errs.append(str(e)))
             pg.on('console', lambda m: m.type == 'error' and errs.append(m.text))
             await pg.goto(URL); await pg.fill('#nick', n); await pg.click('#nick-ok'); await pg.wait_for_timeout(600)
-            if i == 0: await pg.screenshot(path='test/char_select_live.png')
-            await pg.click(f'#char-grid .char:nth-child({3 if i == 0 else 6})'); await pg.wait_for_timeout(1500)
+            await pg.wait_for_timeout(1500)
             pages.append(pg)
         A, B = pages
         await A.click('[data-act=feed]'); await A.wait_for_timeout(800)

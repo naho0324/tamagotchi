@@ -1,4 +1,4 @@
-# Showcase: forces stages client-side to screenshot all character sprites (home adult, plaza mixed, volley, char select)
+# Showcase: forces stages client-side to screenshot all character sprites (home adult, plaza mixed, volley)
 import asyncio
 from playwright.async_api import async_playwright
 URL = 'http://localhost:3456'
@@ -12,8 +12,7 @@ async def main():
             ctx = await b.new_context(viewport={'width': 720, 'height': 820}); pg = await ctx.new_page()
             pg.on('pageerror', lambda e: errs.append(str(e)))
             await pg.goto(URL); await pg.fill('#nick', f'캐릭{i+1}'); await pg.click('#nick-ok'); await pg.wait_for_timeout(400)
-            if i == 0: await pg.screenshot(path='test/char_select.png')
-            await pg.click(f'#char-grid .char:nth-child({i+1})'); await pg.wait_for_timeout(2500); pages.append(pg)
+            await pg.wait_for_timeout(2500); pages.append(pg)
         A = pages[6]
         await A.evaluate(FORCE + "window.FORCE_STAGE='adult'"); await A.wait_for_timeout(500); await A.screenshot(path='test/home.png')
         await A.evaluate("S.pet.sick = true"); await A.wait_for_timeout(300); await A.screenshot(path='test/home_sick.png')
