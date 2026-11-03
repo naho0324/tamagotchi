@@ -3,10 +3,10 @@ from playwright.async_api import async_playwright
 async def main():
     async with async_playwright() as p:
         b = await p.chromium.launch(); errs = []; pages = []
-        for n in ['스네이크A', '스네이크B']:
+        for i, n in enumerate(['스네이크A', '스네이크B']):
             ctx = await b.new_context(viewport={'width': 720, 'height': 820}); pg = await ctx.new_page()
             pg.on('pageerror', lambda e: errs.append(str(e))); pg.on('console', lambda m: m.type == 'error' and errs.append(m.text))
-            await pg.goto('http://localhost:3456'); await pg.fill('#nick', n); await pg.click('#nick-ok'); await pg.wait_for_timeout(1000)
+            await pg.goto('http://localhost:3456'); await pg.fill('#nick', n); await pg.click('#nick-ok'); await pg.wait_for_timeout(500); await pg.click('#char-grid .char:nth-child(%d)' % (i % 7 + 1)); await pg.wait_for_timeout(1000)
             await pg.click('[data-act=plaza]'); await pg.wait_for_timeout(500); await pg.click('#snake-btn'); await pg.wait_for_timeout(700); pages.append(pg)
         A, B = pages
         await A.screenshot(path='test/snake_lobby.png')

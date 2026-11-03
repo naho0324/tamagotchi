@@ -1,7 +1,7 @@
 // Pet simulation: all state derived from timestamps, simulated in 1-minute steps.
 const MIN = 60000;
 const CFG = {
-  hatchMs: 2 * MIN, childMs: 10 * MIN, adultMs: 30 * MIN,
+  hatchMs: +process.env.HATCH_MS || 2 * MIN, childMs: 10 * MIN, adultMs: 30 * MIN,
   decay: { hunger: 0.25, happy: 0.2, energy: 0.15, clean: 0.15 }, // per minute
   sleepEnergy: 4, deathZeroMin: 720, sickThreshold: 15,
 };
@@ -14,8 +14,10 @@ const SHOP = {
   cloth_pink: { name: '분홍 옷', price: 50, type: 'clothes' },
 };
 const clamp = v => Math.max(0, Math.min(100, v));
-function newPet(now) {
-  return { stage: 'egg', bornAt: now, hatchedAt: null, lastUpdate: now, style: Math.floor(Math.random() * 6),
+const NCHAR = 7;
+const validChar = c => Number.isInteger(+c) && +c >= 1 && +c <= NCHAR;
+function newPet(now, char) {
+  return { stage: 'egg', char: validChar(char) ? +char : 1 + Math.floor(Math.random() * NCHAR), bornAt: now, hatchedAt: null, lastUpdate: now, style: Math.floor(Math.random() * 6),
     stats: { hunger: 80, happy: 80, energy: 80, clean: 80 }, sick: false, sleeping: false, zeroMin: 0,
     careScore: 0, cooldowns: {} };
 }
@@ -41,6 +43,7 @@ function stepMinute(p, t) {
 }
 function update(player, now) {
   const p = player.pet;
+  if (!validChar(p.char)) p.char = 1 + Math.floor(Math.random() * NCHAR); // migrate existing pets
   let steps = Math.floor((now - p.lastUpdate) / MIN);
   if (steps > 60 * 24 * 14) { p.lastUpdate = now - 60 * 24 * 14 * MIN; steps = 60 * 24 * 14; }
   for (let i = 1; i <= steps; i++) stepMinute(p, p.lastUpdate + i * MIN);
@@ -81,9 +84,10 @@ function act(player, action, arg, now) {
       player.wearing[it.type === 'hat' ? 'hat' : 'clothes'] = player.wearing[it.type] === arg ? null : arg;
       return { msg: '갈아입었어요!' };
     }
-    case 'restart': if (p.stage !== 'dead') return '아직 살아있어요'; player.pet = newPet(now); return { msg: '새 알이 왔어요!' };
+    case 'choose': if (!validChar(arg)) return '없는 캐릭터'; if (p.stage !== 'egg') return '알일 때만 고를 수 있어요'; p.char = +arg; return { msg: '캐릭터를 골랐어요!' };
+    case 'restart': if (p.stage !== 'dead') return '아직 살아있어요'; player.pet = newPet(now, arg); return { msg: '새 알이 왔어요!' };
   }
   return '알 수 없는 행동';
 }
-function publicPet(pl) { return { nickname: pl.nickname, stage: pl.pet.stage, style: pl.pet.style, wearing: pl.wearing, sick: pl.pet.sick, sleeping: pl.pet.sleeping }; }
-module.exports = { newPlayer, update, act, SHOP, CFG, publicPet };
+function publicPet(pl) { return { nickname: pl.nickname, stage: pl.pet.stage, char: pl.pet.char, style: pl.pet.style, wearing: pl.wearing, sick: pl.pet.sick, sleeping: pl.pet.sleeping }; }
+module.exports = { NCHAR, newPlayer, update, act, SHOP, CFG, publicPet };

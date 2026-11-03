@@ -12,15 +12,28 @@ function start() {
   if (!ident) { $('#nick-modal').classList.remove('hidden'); $('#nick').focus(); return; }
   socket = io({ auth: ident, transports: ['websocket'] });
   socket.on('connect_error', e => toast('연결 실패: ' + e.message));
-  socket.on('state', st => { S = st; clockSkew = st.now - Date.now(); renderHud(); });
+  socket.on('state', st => { S = st;
+    const pc = +localStorage.getItem('tg_char_pending'); if (pc && st.pet.stage === 'egg') { localStorage.removeItem('tg_char_pending'); if (st.pet.char !== pc) socket.emit('act', { action: 'choose', arg: pc }, () => {}); } clockSkew = st.now - Date.now(); renderHud(); });
   bindSocket();
+}
+// ---- character select ----
+let pickCb = null;
+function openPicker(cb, sel) {
+  pickCb = cb; const g = $('#char-grid'); g.innerHTML = '';
+  for (let c = 1; c <= 7; c++) { const b = document.createElement('button'); b.className = 'char' + (c === sel ? ' sel' : ''); b.dataset.c = c;
+    b.innerHTML = `<img src="assets/pets/${c}/child.png" alt=""><img src="assets/pets/${c}/adult.png" alt="">`; b.onclick = () => { closeModal('char-modal'); pickCb && pickCb(c); }; g.appendChild(b); }
+  $('#char-modal').classList.remove('hidden');
 }
 $('#nick-ok').onclick = () => {
   const n = $('#nick').value.trim(); if (!n) return toast('닉네임을 입력해주세요');
+  closeModal('nick-modal'); openPicker(c => finishNick(n, c));
+};
+function finishNick(n, c) {
+  localStorage.setItem('tg_char_pending', c);
   localStorage.setItem('tg_nick', n.slice(0, 12));
   if (!localStorage.getItem('tg_pid')) localStorage.setItem('tg_pid', (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2)));
-  closeModal('nick-modal'); start();
-};
+  start();
+}
 $('#nick').onkeydown = e => { if (e.key === 'Enter') $('#nick-ok').click(); };
 
 // ---- HOME ----
@@ -81,7 +94,7 @@ document.querySelectorAll('.buttons button').forEach(b => b.onclick = () => {
   else if (a === 'plaza') enterPlaza();
   else act(a);
 });
-roomCv.onclick = () => { if (S && S.pet.stage === 'dead') act('restart'); };
+roomCv.onclick = () => { if (!S) return; if (S.pet.stage === 'dead') openPicker(c => act('restart', c)); else if (S.pet.stage === 'egg') openPicker(c => act('choose', c), S.pet.char); };
 function renderShop() {
   const sl = $('#shop-list'); sl.innerHTML = '';
   for (const [k, it] of Object.entries(S.shop)) {
@@ -233,8 +246,8 @@ function drawSnake(t) {
     const pts = s.b.map(([x, y], i) => { const [nx, ny] = i === 0 ? [x + SD[dir][0], y + SD[dir][1]] : s.b[i - 1]; return [x + (nx - x) * mv, y + (ny - y) * mv]; });
     pts.slice(1).reverse().forEach(([x, y]) => { c.fillStyle = '#1d2557'; c.fillRect(x * CELL, y * CELL, CELL, CELL); c.fillStyle = s.c; c.fillRect(x * CELL + 2, y * CELL + 2, 12, 12); });
     const [hx, hy] = pts[0]; c.fillStyle = '#1d2557'; c.fillRect(hx * CELL - 1, hy * CELL - 1, CELL + 2, CELL + 2); c.fillStyle = s.c; c.fillRect(hx * CELL + 1, hy * CELL + 1, 14, 14);
-    const look = { ...(SN.looks[s.sid] || {}), stage: 'baby' };
-    drawPet(c, hx * CELL + 8, hy * CELL + 18, 22, look, t, { still: true });
+    const sl = SN.looks[s.sid] || {}, look = { ...sl, stage: ['egg', 'dead'].includes(sl.stage) || !sl.stage ? 'baby' : sl.stage, sick: false, sleeping: false };
+    drawPet(c, hx * CELL + 8, hy * CELL + 17, 18, look, t, { still: true });
     c.font = '10px Galmuri9, monospace'; c.textAlign = 'center'; c.fillStyle = '#1d2557'; c.fillText(s.n + (s.sid === socket.id ? '(나)' : ''), hx * CELL + 8, hy * CELL - 8); c.textAlign = 'left';
     c.globalAlpha = 1;
   }

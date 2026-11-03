@@ -56,7 +56,7 @@ io.on('connection', socket => {
   });
   socket.on('v:cancel', () => { if (queue && queue.socket.id === socket.id) queue = null; });
   socket.on('v:practice', () => { if (matches.has(socket.id)) return; if (queue && queue.socket.id === socket.id) queue = null;
-    startMatch([{ socket, socketId: socket.id, id: socket.user.id, look: look() }, { socketId: null, id: 'ai', look: { nickname: '연습봇', stage: 'child', style: 3, wearing: {} } }], true); });
+    startMatch([{ socket, socketId: socket.id, id: socket.user.id, look: look() }, { socketId: null, id: 'ai', look: { nickname: '연습봇', stage: 'child', char: 1 + Math.floor(Math.random() * 7), style: 3, wearing: {} } }], true); });
   socket.on('v:input', inp => { const m = matches.get(socket.id); if (m && inp) m.setInput(socket.id, inp); });
   socket.on('v:leave', () => { const m = matches.get(socket.id); if (m) m.leave(socket.id); });
   socket.on('s:join', cb => { const e = snake.join(socket, look()); if (e && e !== 'already') socket.emit('toast', e); else snake.emitLobby(); });
