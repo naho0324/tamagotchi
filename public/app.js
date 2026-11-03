@@ -50,7 +50,7 @@ $('#nick').onkeydown = e => { if (e.key === 'Enter') $('#nick-ok').click(); };
 function renderHud() {
   if (!S) return;
   $('#coins').textContent = S.coins;
-  for (const k of ['hunger', 'happy', 'energy', 'clean']) { const v = S.pet.stats[k], el = $('#b-' + k); el.style.width = v + '%'; el.classList.toggle('low', v < 25 && !['egg','dead'].includes(S.pet.stage)); }
+  for (const k of ['hunger', 'happy', 'energy', 'clean']) { const v = S.pet.stats[k], el = $('#b-' + k); el.style.width = v + '%'; $('#n-' + k).textContent = `${Math.round(v)}/100`; el.classList.toggle('low', v < 25 && !['egg','dead'].includes(S.pet.stage)); }
   const p = S.pet; let st = `${S.nickname}의 펫 · ${STAGE_KO[p.stage]}`;
   if (p.stage === 'egg') { const left = Math.max(0, Math.ceil((p.bornAt + G.CFG.hatchMs - Date.now()) / 1000)); st += ` · 부화까지 ${left}초`; }
   if (p.sick) st += ' · 아파요! 약이 필요해요'; if (p.sleeping) st += ' · 자는 중'; if (p.stage === 'dead') st += ' · 화면을 눌러 다시 시작';
@@ -332,7 +332,7 @@ function drawRaid(t) {
     c.restore();
   }
   // HP bar
-  c.fillStyle = '#fff'; c.font = '12px Galmuri11, monospace'; c.textAlign = 'center'; c.fillText(`몽꾸 HP [${RD.diffName || '보통'}]` + (enr ? ' · 분노!' : ''), 240, 14); c.textAlign = 'left';
+  c.fillStyle = '#fff'; c.font = '12px Galmuri11, monospace'; c.textAlign = 'center'; c.fillText(`몽꾸 HP ${Math.ceil(bhp)}/${bmax} [${RD.diffName || '보통'}]` + (enr ? ' · 분노!' : ''), 240, 14); c.textAlign = 'left';
   c.fillStyle = '#1d2557'; c.fillRect(98, 18, 284, 12); c.fillStyle = '#5a2a4a'; c.fillRect(100, 20, 280, 8); c.fillStyle = enr ? '#ff3050' : '#f25a7a'; c.fillRect(100, 20, 280 * bhp / bmax, 8);
   // bombs: warning shadow then heart falls
   for (const [x, y, tt, mx] of st.m) {
@@ -360,6 +360,7 @@ function drawRaid(t) {
     c.globalAlpha = 1;
     if (!e.alive) { c.font = '14px sans-serif'; c.fillText('😵', e.d.x - 8, e.d.y - sz - 2); }
     c.fillStyle = '#1d2557'; c.fillRect(e.d.x - 17, e.d.y + 3, 34, 6); c.fillStyle = e.hp > 30 ? '#7cd97a' : '#f25a5a'; c.fillRect(e.d.x - 16, e.d.y + 4, 32 * e.hp / 100, 4);
+    c.font = '9px Galmuri9, monospace'; c.textAlign = 'center'; c.lineWidth = 3; c.strokeStyle = '#fff'; c.strokeText(`${Math.ceil(e.hp)}/100`, e.d.x, e.d.y + 30); c.fillStyle = "#1d2557"; c.fillText(`${Math.ceil(e.hp)}/100`, e.d.x, e.d.y + 30); c.textAlign = 'left';
     c.font = '10px Galmuri9, monospace'; c.textAlign = 'center'; c.fillStyle = e.sid === socket.id ? '#ffd2e0' : '#fff'; c.fillText((look.nickname || '') + (e.sid === socket.id ? '(나)' : ''), e.d.x, e.d.y + 19); c.textAlign = 'left';
   }
   // stars (extrapolated)

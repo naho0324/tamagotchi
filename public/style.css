@@ -42,3 +42,5 @@ textarea { width: 100%; box-sizing: border-box; font: 11px monospace; border: 3p
 .code-tag { background: #fff5f8; border: 2px solid #1d2557; border-radius: 4px; padding: 0 6px; font-family: Galmuri11, monospace; letter-spacing: 2px; }
 #room-code { text-transform: uppercase; letter-spacing: 3px; }
 .confirm { background: #ffe3ea; border: 3px solid #c2455a; border-radius: 8px; padding: 8px; margin: 8px 0; }
+
+.stat i{position:relative;height:16px}.stat .num{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font:10px Galmuri9,monospace;color:#1d2557;text-shadow:1px 0 #fff,-1px 0 #fff,0 1px #fff,0 -1px #fff;z-index:1;pointer-events:none}
