@@ -332,7 +332,7 @@ function drawRaid(t) {
     c.restore();
   }
   // HP bar
-  c.fillStyle = '#fff'; c.font = '12px Galmuri11, monospace'; c.textAlign = 'center'; c.fillText(`몽꾸 HP ${Math.ceil(bhp)}/${bmax} [${RD.diffName || '보통'}]` + (enr ? ' · 분노!' : ''), 240, 14); c.textAlign = 'left';
+  c.fillStyle = '#fff'; c.font = '12px Galmuri11, monospace'; c.textAlign = 'center'; c.fillText(`몽꾸 HP [${RD.diffName || '보통'}]` + (enr ? ' · 분노!' : ''), 240, 14); c.textAlign = 'left';
   c.fillStyle = '#1d2557'; c.fillRect(98, 18, 284, 12); c.fillStyle = '#5a2a4a'; c.fillRect(100, 20, 280, 8); c.fillStyle = enr ? '#ff3050' : '#f25a7a'; c.fillRect(100, 20, 280 * bhp / bmax, 8);
   // bombs: warning shadow then heart falls
   for (const [x, y, tt, mx] of st.m) {
