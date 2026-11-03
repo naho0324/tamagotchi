@@ -56,3 +56,4 @@ textarea { width: 100%; box-sizing: border-box; font: 11px monospace; border: 3p
 .w-item img{width:48px;height:62px;object-fit:contain;image-rendering:pixelated}.w-item.on{background:#ffe0ec;border-color:#c2455a}.w-item em{color:#c2455a;font-style:normal;font-size:10px;min-height:12px}
 
 #mCv{width:100%;image-rendering:pixelated;border:3px solid #1d2557;border-radius:8px;background:#fff5f8;touch-action:manipulation}
+#bkCv{width:100%;image-rendering:pixelated;border:3px solid #1d2557;border-radius:8px;touch-action:none}

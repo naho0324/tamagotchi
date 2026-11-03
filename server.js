@@ -6,6 +6,7 @@ const { resolvePlayer } = require('./auth');
 const G = require('./game');
 const { Match } = require('./volley');
 const { SnakeLobby } = require('./snake');
+const { BreakoutLobby } = require('./breakout');
 const { RaidLobby } = require('./raid');
 
 const app = express(); app.use(express.static(path.join(__dirname, 'public')));
@@ -45,8 +46,11 @@ function makeRoom() {
   room.raid = new RaidLobby(io, (win, results, diff, hp, max) => {
     for (const r of results) { const so = sock(r.sid); if (so) { if (!r.left && r.coins) r.coins = apply(so, { coins: r.coins }).coins; so.emit('r:end', { win, diff, hp, max, results, energy: r.energy, coins: r.coins }); } }
   }, 'raid:' + code);
-  room.snake.gate = room.raid.gate = (p, cost) => { const so = sock(p.sid); return so ? canPlay(so, cost) : '연결이 끊겼어요'; };
-  room.snake.charge = room.raid.charge = (players, cost) => players.forEach(p => apply(sock(p.sid), { energy: -cost }));
+  room.breakout = new BreakoutLobby(io, results => {
+    for (const r of results) { const so = sock(r.sid); if (so) { if (!r.left && r.coins) r.coins = apply(so, { coins: r.coins }).coins; so.emit('bk:end', results.map(q => q.sid === r.sid ? r : q)); } }
+  }, 'breakout:' + code);
+  room.snake.gate = room.raid.gate = room.breakout.gate = (p, cost) => { const so = sock(p.sid); return so ? canPlay(so, cost) : '연결이 끊겼어요'; };
+  room.snake.charge = room.raid.charge = room.breakout.charge = (players, cost) => players.forEach(p => apply(sock(p.sid), { energy: -cost }));
   rooms.set(code, room); return room;
 }
 function enterRoom(socket, room) {
@@ -58,7 +62,7 @@ function enterRoom(socket, room) {
 }
 function leaveRoom(socket) {
   const room = rooms.get(socket.roomCode); if (!room) return;
-  room.raid.leave(socket.id); room.snake.leave(socket.id);
+  room.raid.leave(socket.id); room.snake.leave(socket.id); room.breakout.leave(socket.id);
   if (room.queue && room.queue.socket.id === socket.id) room.queue = null;
   room.members.delete(socket.id); socket.leave('room:' + room.code); socket.roomCode = null;
   // Keep empty rooms alive for a while: on phones the creator switches apps to share the code, the browser
@@ -111,6 +115,10 @@ io.on('connection', socket => {
   const joinLobby = (lob, cost, kick) => { const r = need(); if (!r) return socket.emit(kick, '먼저 방에 들어가세요');
     const e = canPlay(socket, cost); if (e) { socket.emit('toast', e); return socket.emit(kick, e); }
     const j = r[lob].join(socket, { ...look(socket), id: socket.user.id }); if (j && j !== 'already') socket.emit('toast', j); else r[lob].emitLobby(); };
+  socket.on('bk:join', () => joinLobby('breakout', 10, 'bk:kicked'));
+  socket.on('bk:leave', () => { const r = room(); r && r.breakout.leave(socket.id); });
+  socket.on('bk:start', () => { const r = room(); const e = r ? r.breakout.start(socket.id) : '방이 없어요'; if (e) socket.emit('toast', e); });
+  socket.on('bk:x', x => { const r = room(); r && r.breakout.input(socket.id, x); });
   socket.on('s:join', () => joinLobby('snake', COST.snake, 's:kicked'));
   socket.on('s:leave', () => { const r = room(); r && r.snake.leave(socket.id); });
   socket.on('s:start', () => { const r = room(); const e = r ? r.snake.start(socket.id) : '방이 없어요'; if (e) socket.emit('toast', e); });

@@ -36,7 +36,7 @@ function start() {
   // minigame results from the server, applied to the local save
   socket.on('apply', d => { if (!S) return; tickSim(); if (d.coins) G.addCoins(S, Math.max(0, Math.min(750, d.coins | 0)));
     if (d.energy) S.pet.stats.energy = G.clamp(S.pet.stats.energy + Math.max(-100, Math.min(100, +d.energy || 0))); if (d.win) S.wins = (S.wins || 0) + 1; save(); renderHud(); });
-  bindSocket(); miniBind();
+  bindSocket(); miniBind(); bkBind();
 }
 $('#nick-ok').onclick = () => {
   const n = $('#nick').value.trim(); if (!n) return toast('닉네임을 입력해주세요');
@@ -403,7 +403,7 @@ function raidTick() { // fixed-step local prediction for own pet
   const sk = RD.skLocal > 0; $('#r-skill').disabled = sk || !(me && me[4]); $('#r-skill').textContent = sk ? `✨ 스킬 (${Math.ceil(RD.skLocal / 30)})` : '✨ 스킬';
   $('#r-atk').disabled = !(me && me[4]);
 }
-function kickedToPlaza(m) { toast(m); RD = null; SN = null; enterPlaza(); }
+function kickedToPlaza(m) { toast(m); RD = null; SN = null; BK = null; enterPlaza(); }
 function bindRaid() {
   socket.on('r:kicked', kickedToPlaza); socket.on('s:kicked', kickedToPlaza); socket.on('v:kicked', m => { $('#match-status').textContent = m; });
   socket.on('r:lobby', l => { if (!$('#raid').classList.contains('hidden') && !RD) renderRaidLobby(l); });
@@ -443,7 +443,7 @@ function bindSocket() {
     $('#end-msg').textContent = `${d.score[0]} : ${d.score[1]}` + (d.forfeit ? ' (기권)' : '') + ` · +${d.reward || 0} 코인, 에너지 -${d.energy || 0}`;
     $('#end-modal').classList.remove('hidden'); });
 }
-$('#end-ok').onclick = () => { closeModal('end-modal'); if (!$('#mini').classList.contains('hidden')) return enterPlaza(); if (!$('#snake').classList.contains('hidden') || !$('#raid').classList.contains('hidden')) { enterPlaza(); return; } if (inPlaza) { show('plaza'); $('#match-status').textContent = '화면을 눌러 이동해요'; } else show('home'); };
+$('#end-ok').onclick = () => { closeModal('end-modal'); if (!$('#mini').classList.contains('hidden') || !$('#breakout').classList.contains('hidden')) return enterPlaza(); if (!$('#snake').classList.contains('hidden') || !$('#raid').classList.contains('hidden')) { enterPlaza(); return; } if (inPlaza) { show('plaza'); $('#match-status').textContent = '화면을 눌러 이동해요'; } else show('home'); };
 function loop(t) {
   if (!$('#home').classList.contains('hidden')) drawRoom(t);
   if (S && !$('#wardrobe-modal').classList.contains('hidden')) drawWardrobe(t);
@@ -498,3 +498,51 @@ function drawMini(t) { if (!MG || mcv.classList.contains('hidden')) return; cons
       const o = MG.holes.find(q => q.i === i && q.until > now); if (o) { const k = Math.min(1, (o.until - now) / 150); heart(c, h.x, h.y - 4 * (1 - k), 8, '#1d2557'); heart(c, h.x, h.y - 4 * (1 - k), 6.5, '#ff4f8a'); } });
     MG.pops = MG.pops.filter(p => now - p.t < 500); for (const p of MG.pops) { c.globalAlpha = 1 - (now - p.t) / 500; c.fillStyle = '#1d2557'; c.font = '20px Galmuri11, monospace'; c.fillText('+1', p.x - 10, p.y - 30 - (now - p.t) / 20); c.globalAlpha = 1; } } }
 (function miniLoop(t) { drawMini(t); requestAnimationFrame(miniLoop); })(performance.now());
+
+// ---- BREAKOUT 벽돌부수기 (1-2 players, server-authoritative; own paddle predicted locally, balls extrapolated) ----
+const bkcv = $('#bkCv'), bkctx = bkcv.getContext('2d'); bkctx.imageSmoothingEnabled = false; let BK = null;
+const BRICK_COL = ['#f7a8b8', '#ffd27a', '#a6e3a1', '#9cc9f5', '#c9a3e8'];
+$('#bk-btn').onclick = () => { socket.emit('plaza:leave'); socket.emit('v:cancel'); show('breakout'); BK = null; bkcv.classList.add('hidden'); $('#bk-lobby').classList.remove('hidden'); $('#bk-hud').textContent = ''; sendSnap(); socket.emit('bk:join'); };
+$('#bk-back').onclick = () => { socket.emit('bk:leave'); BK = null; enterPlaza(); };
+$('#bk-start').onclick = () => socket.emit('bk:start');
+function bkMine() { return BK && BK.paddles.find(p => p.sid === socket.id); }
+function bkAim(x) { const p = bkMine(); if (!p) return; BK.tx = Math.max(p.lo + p.w / 2, Math.min(p.hi - p.w / 2, x)); if (performance.now() - (BK.sent || 0) > 30) { BK.sent = performance.now(); socket.emit('bk:x', BK.tx); } }
+const bkPtr = e => { if (!BK) return; const r = bkcv.getBoundingClientRect(); bkAim((e.clientX - r.left) * 480 / r.width); };
+bkcv.addEventListener('pointerdown', bkPtr); bkcv.addEventListener('pointermove', e => { if (e.buttons || e.pointerType !== 'mouse') bkPtr(e); });
+let bkHold = 0; const bkKeys = { ArrowLeft: -1, a: -1, A: -1, ArrowRight: 1, d: 1, D: 1 };
+addEventListener('keydown', e => { if (BK && bkKeys[e.key]) { e.preventDefault(); bkHold = bkKeys[e.key]; } });
+addEventListener('keyup', e => { if (bkKeys[e.key] === bkHold) bkHold = 0; });
+document.querySelectorAll('.bkpad button').forEach(b => { b.addEventListener('pointerdown', e => { e.preventDefault(); bkHold = +b.dataset.m; }); ['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => b.addEventListener(ev, () => { bkHold = 0; })); });
+function bkLobby(l) { const pl = $('#bk-players'); pl.innerHTML = '';
+  l.players.forEach(p => { const d = document.createElement('div'); d.className = 'item';
+    d.innerHTML = `<span><span class="dot" style="background:${p.color}"></span>${p.nickname}${p.sid === socket.id ? ' (나)' : ''}</span><span>${p.sid === l.host ? '👑 방장' : ''}</span>`; pl.appendChild(d); });
+  $('#bk-start').classList.toggle('hidden', l.host !== socket.id || l.state !== 'lobby');
+  $('#bk-info').textContent = l.state === 'playing' ? '게임 진행 중...' : l.countdown ? `${l.countdown}초 후 자동 시작!` : l.players.length < 2 ? `친구 1명과 같이 할 수 있어요 (${l.players.length}/2) · 혼자서도 시작 가능` : ''; }
+function bkBind() {
+  socket.on('bk:lobby', l => { if (!$('#breakout').classList.contains('hidden')) bkLobby(l); });
+  socket.on('bk:kicked', kickedToPlaza);
+  socket.on('bk:start', d => { BK = { ...d, cur: null, tAt: 0, sent: 0 }; const me = bkMine(); BK.px = BK.tx = me ? (me.lo + me.hi) / 2 : 240;
+    $('#bk-lobby').classList.add('hidden'); bkcv.classList.remove('hidden'); });
+  socket.on('bk:level', lv => { toast(`${lv}단계! 공이 빨라져요 🧱`); });
+  socket.on('bk:state', st => { if (!BK) return; BK.cur = st; BK.tAt = performance.now(); $('#bk-hud').textContent = `${st.lv}단계 · ${'♥'.repeat(Math.max(0, st.lives))} · ⏱${st.t}`; });
+  socket.on('bk:end', res => { BK = null; const me = res.find(r => r.sid === socket.id) || res[0];
+    $('#end-title').textContent = me.win ? '🏆 모든 벽돌 클리어!' : '🧱 게임 끝!';
+    $('#end-msg').textContent = `${res.map(r => r.nickname).join(' + ')} · 벽돌 ${me.bricks}개 · ${me.levels}단계 클리어 · +${me.coins} 코인, 에너지 -${me.energy}`;
+    $('#end-modal').classList.remove('hidden'); });
+}
+function drawBreakout(t) { if (!BK || bkcv.classList.contains('hidden')) return; const c = bkctx, g = BK.geo, st = BK.cur;
+  c.fillStyle = '#fff5f8'; c.fillRect(0, 0, 480, 320); c.fillStyle = '#fbe3ea'; for (let y = 0; y < 320; y += 16) for (let x = (y / 16) % 2 * 16; x < 480; x += 32) c.fillRect(x, y, 16, 16);
+  if (BK.paddles.length > 1) { c.fillStyle = 'rgba(29,37,87,.12)'; for (let y = 200; y < 320; y += 8) c.fillRect(239, y, 2, 4); }
+  const me = bkMine(); if (me) { if (bkHold) { BK.tx = Math.max(me.lo + me.w / 2, Math.min(me.hi - me.w / 2, BK.tx + bkHold * 7)); if (t - (BK.sent || 0) > 30) { BK.sent = t; socket.emit('bk:x', BK.tx); } }
+    const d = BK.tx - BK.px; BK.px += Math.max(-7, Math.min(7, d)); }
+  if (!st) return;
+  st.k.forEach((v, i) => { if (!v) return; const x = g.BX + (i % g.COLS) * g.BW, y = g.BY + Math.floor(i / g.COLS) * g.BH;
+    c.fillStyle = '#1d2557'; c.fillRect(x, y, g.BW - g.GAP, g.BH - g.GAP); c.fillStyle = v > 1 ? '#8a7fb8' : BRICK_COL[Math.floor(i / g.COLS) % 5]; c.fillRect(x + 2, y + 2, g.BW - g.GAP - 4, g.BH - g.GAP - 4);
+    c.fillStyle = 'rgba(255,255,255,.55)'; c.fillRect(x + 3, y + 3, g.BW - g.GAP - 10, 2); });
+  const k = Math.min(1.5, (t - BK.tAt) / BK.tick);
+  for (const [x, y, vx, vy, w] of st.b) { const bx = w ? x : x + vx * k, by = w ? y : y + vy * k; c.fillStyle = '#1d2557'; c.fillRect(bx - g.R, by - g.R, g.R * 2, g.R * 2); c.fillStyle = '#fff'; c.fillRect(bx - g.R + 2, by - g.R + 2, g.R * 2 - 4, g.R * 2 - 4); }
+  for (const [sid, sx, gone] of st.p) { const p = BK.paddles.find(q => q.sid === sid); if (!p || gone) continue; const x = sid === socket.id ? BK.px : sx;
+    c.fillStyle = '#1d2557'; c.fillRect(x - p.w / 2 - 2, g.PY - 2, p.w + 4, g.PH + 4); c.fillStyle = p.color; c.fillRect(x - p.w / 2, g.PY, p.w, g.PH);
+    const lk = BK.looks[sid] || {}; drawPet(c, x, g.PY - 1, 22, { ...lk, stage: ['egg', 'dead'].includes(lk.stage) || !lk.stage ? 'baby' : lk.stage, sick: false, sleeping: false }, t, { still: true });
+    c.fillStyle = '#1d2557'; c.font = '10px Galmuri11, monospace'; c.textAlign = 'center'; c.fillText(p.nickname + (sid === socket.id ? ' (나)' : ''), x, 318); c.textAlign = 'left'; } }
+(function bkLoop(t) { drawBreakout(t); requestAnimationFrame(bkLoop); })(performance.now());
