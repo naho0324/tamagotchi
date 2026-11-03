@@ -241,7 +241,123 @@ function drawSnake(t) {
     c.globalAlpha = 1;
   }
 }
+
+// ---- RAID (boss 몽꾸) ----
+const BOSS = new Image(); BOSS.src = 'assets/boss/monggu.png';
+const rcv = $('#rCv'), rc = rcv.getContext('2d'); rc.imageSmoothingEnabled = false;
+let RD = null; const rkeys = { l: false, r: false, u: false, d: false };
+const RKEY = { ArrowLeft: 'l', a: 'l', A: 'l', ArrowRight: 'r', d: 'r', D: 'r', ArrowUp: 'u', w: 'u', W: 'u', ArrowDown: 'd', s: 'd', S: 'd' };
+function rSend() { if (RD) socket.emit('r:input', rkeys); }
+function rAct(k) { if (!RD || !RD.cur) return; const me = RD.cur.p.find(q => q[0] === socket.id); if (!me || !me[4]) return;
+  if (k === 'skill' && RD.skLocal > 0) return; if (k === 'skill') RD.skLocal = RD.cfg.SKILL_CD; socket.emit('r:act', k); }
+addEventListener('keydown', e => { if (!RD) return; const k = RKEY[e.key];
+  if (k) { e.preventDefault(); if (!rkeys[k]) { rkeys[k] = true; rSend(); } }
+  else if (e.key === ' ' || e.key === 'j' || e.key === 'J') { e.preventDefault(); rAct('atk'); } else if (e.key === 'k' || e.key === 'K') { e.preventDefault(); rAct('skill'); } });
+addEventListener('keyup', e => { const k = RKEY[e.key]; if (k && RD) { rkeys[k] = false; rSend(); } });
+document.querySelectorAll('.rpad button').forEach(b => { const k = b.dataset.d, on = v => e => { e.preventDefault(); rkeys[k] = v; rSend(); };
+  b.addEventListener('pointerdown', on(true)); b.addEventListener('pointerup', on(false)); b.addEventListener('pointerleave', on(false)); b.addEventListener('pointercancel', on(false)); });
+let atkHold = null;
+$('#r-atk').addEventListener('pointerdown', e => { e.preventDefault(); rAct('atk'); clearInterval(atkHold); atkHold = setInterval(() => rAct('atk'), 320); });
+for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) $('#r-atk').addEventListener(ev, () => clearInterval(atkHold));
+$('#r-skill').addEventListener('pointerdown', e => { e.preventDefault(); rAct('skill'); });
+$('#raid-btn').onclick = () => { socket.emit('plaza:leave'); socket.emit('v:cancel'); show('raid'); RD = null; rcv.classList.add('hidden'); $('#raid .raid-act').classList.add('hidden'); $('#r-lobby').classList.remove('hidden'); socket.emit('r:join'); };
+$('#r-back').onclick = () => { socket.emit('r:leave'); RD = null; enterPlaza(); };
+$('#r-start').onclick = () => socket.emit('r:start');
+function renderRaidLobby(l) {
+  const pl = $('#r-players'); pl.innerHTML = '';
+  l.players.forEach(p => { const d = document.createElement('div'); d.className = 'item';
+    d.innerHTML = `<span>${p.nickname}${p.sid === socket.id ? ' (나)' : ''} <small>${STAGE_KO[p.stage] || ''}</small></span><span>${p.sid === l.host ? '👑 방장' : ''}</span>`; pl.appendChild(d); });
+  $('#r-start').classList.toggle('hidden', l.host !== socket.id || l.state !== 'lobby');
+  $('#r-info').textContent = l.state === 'playing' ? '레이드 진행 중...' : l.countdown ? `${l.countdown}초 후 자동 시작!` : l.players.length < 2 ? '동료를 기다리는 중 · 혼자서도 도전할 수 있어요' : '';
+}
+function rPredict(me) { const c = RD.cfg; // same movement rules as raid.js
+  if (rkeys.l) me.x -= c.SPEED; if (rkeys.r) me.x += c.SPEED; if (rkeys.u) me.y -= c.SPEED * 0.7; if (rkeys.d) me.y += c.SPEED * 0.7;
+  me.x = Math.max(16, Math.min(c.W - 16, me.x)); me.y = Math.max(c.GY0, Math.min(c.GY1, me.y)); }
+function heart(c, x, y, s, col) { c.fillStyle = col; const g = ['.XX.XX.', 'XXXXXXX', 'XXXXXXX', '.XXXXX.', '..XXX..', '...X...'];
+  g.forEach((r, j) => { for (let i = 0; i < 7; i++) if (r[i] === 'X') c.fillRect(x + (i - 3.5) * s, y + (j - 3) * s, s, s); }); }
+function frog(c, x, y, t) { const s = 2.5, g = ['.O...O.', 'OWO.OWO', 'GGGGGGG', 'GGGRGGG', '.GGGGG.', 'G.G.G.G'], pal = { O: '#1d2557', W: '#fff', G: '#7cc95a', R: '#c2455a' };
+  c.save(); c.translate(x, y); c.rotate(t / 120); g.forEach((r, j) => { for (let i = 0; i < 7; i++) if (r[i] !== '.') { c.fillStyle = pal[r[i]]; c.fillRect((i - 3.5) * s, (j - 3) * s, s, s); } }); c.restore(); }
+function star(c, x, y, s, col) { c.fillStyle = col; const g = ['..X..', '..X..', 'XXXXX', '.XXX.', 'X...X'];
+  g.forEach((r, j) => { for (let i = 0; i < 5; i++) if (r[i] === 'X') c.fillRect(x + (i - 2.5) * s, y + (j - 2.5) * s, s, s); }); }
+function drawRaid(t) {
+  const c = rc; if (!RD || !RD.cur) return; const st = RD.cur, now = performance.now();
+  const [bx0, bhp, bmax, enr, flinch] = st.b;
+  // dramatic purple sky
+  const g = c.createLinearGradient(0, 0, 0, 200); g.addColorStop(0, enr ? '#2a0c2e' : '#1e1442'); g.addColorStop(1, enr ? '#6a2050' : '#5b3a8c'); c.fillStyle = g; c.fillRect(0, 0, 480, 200);
+  c.fillStyle = enr ? '#4a1838' : '#3a2866'; for (const [x, y, w] of [[0, 40, 120], [30, 30, 60], [360, 55, 120], [400, 45, 50], [180, 20, 90]]) c.fillRect((x + t / 80) % 560 - 60, y, w, 10);
+  c.fillStyle = '#fff'; for (let i = 0; i < 18; i++) { const x = (i * 97) % 480, y = (i * 53) % 150; if ((t / 300 + i) % 4 < 2) c.fillRect(x, y, 2, 2); }
+  c.fillStyle = '#4a5a6a'; c.fillRect(0, 175, 480, 125); c.fillStyle = '#6a5a70'; c.fillRect(0, 200, 480, 100); c.fillStyle = '#1d2557'; c.fillRect(0, 198, 480, 2);
+  // boss: interpolate x
+  RD.bx = RD.bx == null ? bx0 : RD.bx + (bx0 - RD.bx) * 0.25; const bx = RD.bx, by = 150;
+  // magic circle
+  c.save(); c.translate(bx, by + 6); c.scale(1, 0.28); for (let k = 0; k < 3; k++) { c.strokeStyle = k === 1 ? '#ffd2f0' : '#ff5fc8'; c.lineWidth = k === 1 ? 2 : 4; c.globalAlpha = 0.6 + 0.3 * Math.sin(t / 200 + k);
+    c.beginPath(); c.arc(0, 0, 60 + k * 14 + Math.sin(t / 300) * 3, 0, 7); c.stroke(); } c.restore(); c.globalAlpha = 1;
+  if (BOSS.complete && BOSS.width) {
+    const bh = 122, bw = bh * BOSS.width / BOSS.height, bob = Math.sin(t / 380) * 4, shake = flinch ? (Math.random() - 0.5) * 6 : 0;
+    const img = enr ? tinted(BOSS, '#ff2040', 0.32) : BOSS;
+    c.save(); c.translate(bx + shake, by + bob); c.scale(1 + Math.sin(t / 160) * 0.015, 1 - Math.sin(t / 160) * 0.01); // cape flutter breathing
+    c.drawImage(img, -bw / 2, -bh, bw, bh);
+    if (flinch > 2 && Math.floor(t / 60) % 2) { c.globalAlpha = 0.3; c.drawImage(tinted(BOSS, '#ffffff', 0.8), -bw / 2, -bh, bw, bh); c.globalAlpha = 1; }
+    if (enr) { c.font = '16px sans-serif'; c.fillText('💢', 22, -bh + 30); }
+    c.restore();
+  }
+  // HP bar
+  c.fillStyle = '#fff'; c.font = '12px Galmuri11, monospace'; c.textAlign = 'center'; c.fillText('몽꾸 HP' + (enr ? ' · 분노!' : ''), 240, 14); c.textAlign = 'left';
+  c.fillStyle = '#1d2557'; c.fillRect(98, 18, 284, 12); c.fillStyle = '#5a2a4a'; c.fillRect(100, 20, 280, 8); c.fillStyle = enr ? '#ff3050' : '#f25a7a'; c.fillRect(100, 20, 280 * bhp / bmax, 8);
+  // bombs: warning shadow then heart falls
+  for (const [x, y, tt, mx] of st.m) {
+    if (tt > 0) { const k = 1 - tt / mx; c.fillStyle = `rgba(200,20,80,${0.2 + 0.3 * k})`; c.beginPath(); c.ellipse(x, y, 30 * (0.5 + k / 2), 10 * (0.5 + k / 2), 0, 0, 7); c.fill();
+      heart(c, x, y - 220 * (1 - k) - 10, 3, '#ff4f8a'); heart(c, x, y - 220 * (1 - k) - 10, 1.5, '#ffd2e0'); }
+    else { c.fillStyle = `rgba(255,120,180,${(8 + tt) / 8})`; c.beginPath(); c.arc(x, y, 30 + -tt * 2, 0, 7); c.fill(); }
+  }
+  // laser
+  if (st.l) { const [x0, x1, warn, k, dur] = st.l, ex = bx - 8, ey = by - 105;
+    if (warn > 0) { c.strokeStyle = `rgba(255,40,60,${0.3 + 0.3 * Math.sin(t / 50)})`; c.setLineDash([6, 6]); c.lineWidth = 2; c.beginPath(); c.moveTo(x0, 270); c.lineTo(x1, 270); c.stroke(); c.setLineDash([]);
+      c.fillStyle = '#ff3050'; c.font = '14px Galmuri11, monospace'; c.fillText(x1 > x0 ? '▶▶' : '◀◀', x0 + (x1 > x0 ? 0 : -24), 262); }
+    else { const sx = x0 + (x1 - x0) * Math.min(1, (k + (now - RD.tAt) / 33) / dur);
+      for (const [w, col] of [[14, 'rgba(255,40,60,.5)'], [6, '#ff3050'], [2, '#fff']]) { c.strokeStyle = col; c.lineWidth = w; c.beginPath(); c.moveTo(ex, ey); c.lineTo(sx, 300); c.moveTo(ex + 16, ey); c.lineTo(sx + 6, 300); c.stroke(); } } }
+  // players (sorted by y)
+  const dt = (now - RD.tAt) / 33;
+  const ents = st.p.map(([sid, x, y, hp, alive, sk, inv]) => {
+    let d = RD.disp[sid] || (RD.disp[sid] = { x, y });
+    if (sid === socket.id) { d.x = RD.pred.x; d.y = RD.pred.y; } else { d.x += (x - d.x) * 0.3; d.y += (y - d.y) * 0.3; }
+    return { sid, hp, alive, inv, d };
+  }).sort((a, b) => a.d.y - b.d.y);
+  for (const e of ents) { const look = RD.looks[e.sid] || {}, stage = ['egg', 'dead'].includes(look.stage) || !look.stage ? 'baby' : look.stage;
+    const sz = stage === 'baby' ? 34 : stage === 'child' ? 44 : 52;
+    if (!e.alive) { c.globalAlpha = 0.45; } else if (e.inv && Math.floor(t / 80) % 2) c.globalAlpha = 0.4;
+    drawPet(c, e.d.x, e.d.y, sz, { ...look, stage, sick: !e.alive, sleeping: false }, t + e.d.x * 7, { walking: e.alive });
+    c.globalAlpha = 1;
+    if (!e.alive) { c.font = '14px sans-serif'; c.fillText('😵', e.d.x - 8, e.d.y - sz - 2); }
+    c.fillStyle = '#1d2557'; c.fillRect(e.d.x - 17, e.d.y + 3, 34, 6); c.fillStyle = e.hp > 30 ? '#7cd97a' : '#f25a5a'; c.fillRect(e.d.x - 16, e.d.y + 4, 32 * e.hp / 100, 4);
+    c.font = '10px Galmuri9, monospace'; c.textAlign = 'center'; c.fillStyle = e.sid === socket.id ? '#ffd2e0' : '#fff'; c.fillText((look.nickname || '') + (e.sid === socket.id ? '(나)' : ''), e.d.x, e.d.y + 19); c.textAlign = 'left';
+  }
+  // stars (extrapolated)
+  for (const [, x, y, vy, big] of st.s) { const yy = y + vy * dt; star(c, x, yy, big ? 4 : 2.2, big ? '#ffe14a' : '#fff59a'); if (big) { c.globalAlpha = .4; star(c, x, yy + 14, 3, '#ffb8e0'); c.globalAlpha = 1; } }
+  for (const [x, y, vx, vy] of st.f) frog(c, x + vx * dt, y + vy * dt, t);
+  if (RD.startAt && now - RD.startAt < 1500) { c.fillStyle = '#fff'; c.font = '22px Galmuri11, monospace'; c.textAlign = 'center'; c.fillText('몽꾸가 나타났다!', 240, 110); c.textAlign = 'left'; }
+}
+function raidTick() { // fixed-step local prediction for own pet
+  if (!RD || !RD.cur) return; const now = performance.now(); RD.acc += Math.min(250, now - (RD.lastT || now)); RD.lastT = now;
+  const me = RD.cur.p.find(q => q[0] === socket.id);
+  while (RD.acc >= 1000 / 30) { if (me && me[4]) rPredict(RD.pred); if (RD.skLocal > 0) RD.skLocal--; RD.acc -= 1000 / 30; }
+  const sk = RD.skLocal > 0; $('#r-skill').disabled = sk || !(me && me[4]); $('#r-skill').textContent = sk ? `✨ 스킬 (${Math.ceil(RD.skLocal / 30)})` : '✨ 스킬';
+  $('#r-atk').disabled = !(me && me[4]);
+}
+function bindRaid() {
+  socket.on('r:lobby', l => { if (!$('#raid').classList.contains('hidden') && !RD) renderRaidLobby(l); });
+  socket.on('r:start', d => { RD = { cur: null, looks: d.looks, cfg: d.cfg, disp: {}, pred: { x: 240, y: 255 }, acc: 0, lastT: 0, skLocal: 0, tAt: 0, bx: null, startAt: performance.now(), init: false };
+    Object.keys(rkeys).forEach(k => rkeys[k] = false); $('#r-lobby').classList.add('hidden'); rcv.classList.remove('hidden'); $('#raid .raid-act').classList.remove('hidden'); });
+  socket.on('r:state', st => { if (!RD) return; RD.cur = st; RD.tAt = performance.now(); $('#r-time').textContent = `⏱ ${Math.floor(st.t / 60)}:${String(st.t % 60).padStart(2, '0')}`;
+    const me = st.p.find(q => q[0] === socket.id); if (!me) return; const [, sx, sy, , , sk] = me, P = RD.pred;
+    if (!RD.init || Math.hypot(sx - P.x, sy - P.y) > 40) { P.x = sx; P.y = sy; RD.init = true; } else { P.x += (sx - P.x) * 0.08; P.y += (sy - P.y) * 0.08; }
+    RD.skLocal = Math.max(sk, Math.min(RD.skLocal, sk + 3)); });
+  socket.on('r:end', d => { RD = null; $('#end-title').textContent = d.win ? '👑 몽꾸 격파!' : '😢 레이드 실패...';
+    $('#end-msg').textContent = (d.win ? '모두 함께 승리했어요!' : `몽꾸 HP ${d.hp}/${d.max} 남음`) + ` · 참가자 전원 +${d.results[0] ? d.results[0].coins : 0}코인`;
+    $('#end-modal').classList.remove('hidden'); });
+}
 function bindSocket() {
+  bindRaid();
   socket.on('toast', toast);
   socket.on('s:lobby', l => { if (!$('#snake').classList.contains('hidden')) renderLobby(l); });
   socket.on('s:start', d => { SN = { cur: null, q: [], looks: d.looks || {}, tick: d.tick || 100, tAt: 0 }; $('#s-lobby').classList.add('hidden'); $('#sCv').classList.remove('hidden'); });
@@ -266,12 +382,13 @@ function bindSocket() {
     $('#end-msg').textContent = `${d.score[0]} : ${d.score[1]}` + (d.forfeit ? ' (기권)' : '') + (d.reward ? ` · +${d.reward}코인` : '');
     $('#end-modal').classList.remove('hidden'); });
 }
-$('#end-ok').onclick = () => { closeModal('end-modal'); if (!$('#snake').classList.contains('hidden')) { enterPlaza(); return; } if (inPlaza) { show('plaza'); $('#match-status').textContent = '화면을 눌러 이동해요'; } else show('home'); };
+$('#end-ok').onclick = () => { closeModal('end-modal'); if (!$('#snake').classList.contains('hidden') || !$('#raid').classList.contains('hidden')) { enterPlaza(); return; } if (inPlaza) { show('plaza'); $('#match-status').textContent = '화면을 눌러 이동해요'; } else show('home'); };
 function loop(t) {
   if (!$('#home').classList.contains('hidden')) drawRoom(t);
   if (!$('#plaza').classList.contains('hidden') && socket) drawPlaza(t);
   if (!$('#volley').classList.contains('hidden')) drawVolley(t);
   if (!$('#snake').classList.contains('hidden')) drawSnake(t);
+  if (!$('#raid').classList.contains('hidden')) { raidTick(); drawRaid(t); }
   requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop); start();

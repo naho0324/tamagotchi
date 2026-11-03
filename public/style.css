@@ -29,3 +29,6 @@ button:active{transform:translateY(3px);box-shadow:0 1px 0 #1d2557}
 .lobby{width:auto;max-height:none}.lobby .item span.dot{display:inline-block;width:14px;height:14px;border:2px solid #1d2557;margin-right:6px;vertical-align:middle}
 .dpad button{font-size:20px}@media(min-width:700px){.dpad{display:none}}
 canvas, img { image-rendering: pixelated; image-rendering: crisp-edges; }
+
+.boss-pre { height: 110px; display: block; margin: 4px auto; }
+.raid-act button:disabled { opacity: .55; }

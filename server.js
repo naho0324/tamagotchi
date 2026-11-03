@@ -4,6 +4,7 @@ const { resolvePlayer } = require('./auth');
 const G = require('./game');
 const { Match } = require('./volley');
 const { SnakeLobby } = require('./snake');
+const { RaidLobby } = require('./raid');
 const DATA = path.join(process.env.DATA_DIR || __dirname, 'data.json');
 let db = { players: {} };
 try { db = JSON.parse(fs.readFileSync(DATA, 'utf8')); } catch {}
@@ -18,7 +19,12 @@ let queue = null;
 const snake = new SnakeLobby(null, results => {
   for (const r of results) { const p = db.players[r.id]; if (p && !r.left) p.coins += r.coins; } save();
   for (const r of results) { const so = io.sockets.sockets.get(r.sid); if (so) { so.emit('s:end', results); if (db.players[r.id]) so.emit('state', view(db.players[r.id])); } }
-}); const matches = new Map(); // socketId -> match
+});
+const raid = new RaidLobby(null, (win, results, hp, max) => {
+  for (const r of results) { const p = db.players[r.id]; if (p && !r.left) p.coins += r.coins; } save();
+  for (const r of results) { const so = io.sockets.sockets.get(r.sid); if (so) { so.emit('r:end', { win, hp, max, results }); if (db.players[r.id]) so.emit('state', view(db.players[r.id])); } }
+});
+const matches = new Map(); // socketId -> match
 
 function getPlayer(user) {
   let pl = db.players[user.id];
@@ -63,7 +69,12 @@ io.on('connection', socket => {
   socket.on('s:leave', () => snake.leave(socket.id));
   socket.on('s:start', () => { const e = snake.start(socket.id); if (e) socket.emit('toast', e); });
   socket.on('s:dir', d => snake.setDir(socket.id, d));
-  socket.on('disconnect', () => { snake.leave(socket.id); plaza.delete(socket.id); if (queue && queue.socket.id === socket.id) queue = null; const m = matches.get(socket.id); if (m) m.leave(socket.id); });
+  socket.on('r:join', () => { const e = raid.join(socket, look()); if (e && e !== 'already') socket.emit('toast', e); else raid.emitLobby(); });
+  socket.on('r:leave', () => raid.leave(socket.id));
+  socket.on('r:start', () => { const e = raid.start(socket.id); if (e) socket.emit('toast', e); });
+  socket.on('r:input', inp => raid.input(socket.id, inp));
+  socket.on('r:act', k => raid.action(socket.id, k));
+  socket.on('disconnect', () => { raid.leave(socket.id); snake.leave(socket.id); plaza.delete(socket.id); if (queue && queue.socket.id === socket.id) queue = null; const m = matches.get(socket.id); if (m) m.leave(socket.id); });
 });
 let mid = 0;
 function startMatch(players, practice) {
@@ -78,7 +89,7 @@ function startMatch(players, practice) {
   });
   players.forEach((p, i) => { if (p.socket) { p.socket.join(room); matches.set(p.socketId, m); p.socket.emit('v:start', { side: i, practice, players: players.map(q => q.look) }); } });
 }
-snake.io = io;
+snake.io = io; raid.io = io;
 setInterval(() => { const now = Date.now(); io.to('plaza').emit('plaza:state', [...plaza.values()].map(e => ({ ...e, chat: e.chatAt && now - e.chatAt < 5000 ? e.chat : null }))); }, 100);
 // refresh pet looks in plaza periodically
 setInterval(() => { for (const [sid, e] of plaza) { const s = io.sockets.sockets.get(sid); if (s && db.players[s.user.id]) Object.assign(e, G.publicPet(db.players[s.user.id])); } }, 3000);
