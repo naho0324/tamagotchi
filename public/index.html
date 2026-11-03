@@ -29,14 +29,14 @@
     <div class="topbar"><button id="plaza-back" class="small">← 집으로</button><b>광장</b><span id="plaza-count"></span></div>
     <canvas id="plazaCv" width="480" height="300"></canvas>
     <div class="row"><input id="chat" maxlength="40" placeholder="말하기..."><button id="chat-send" class="small">전송</button></div>
-    <div class="row"><button id="match" class="big b-pink">🏐 배구 매칭</button><button id="practice" class="big b-blue">🤖 연습 경기</button></div>
-    <div class="row"><button id="snake-btn" class="big b-green">🐍 스네이크 (1~6명)</button><button id="raid-btn" class="big b-purple">👑 보스 레이드 (1~6명)</button></div>
+    <div class="row"><button id="match" class="big b-pink">🏐 배구 매칭 <small>⚡15</small></button><button id="practice" class="big b-blue">🤖 연습 경기 <small>⚡15</small></button></div>
+    <div class="row"><button id="snake-btn" class="big b-green">🐍 스네이크 (1~6명) <small>⚡15</small></button><button id="raid-btn" class="big b-purple">👑 보스 레이드 (1~6명) <small>⚡15~30</small></button></div>
     <div id="match-status" class="hint">화면을 눌러 이동해요</div>
   </section>
   <!-- SNAKE -->
   <section id="snake" class="screen hidden">
     <div class="topbar"><button id="s-back" class="small">← 나가기</button><b>스네이크</b><span id="s-time"></span></div>
-    <div id="s-lobby" class="box lobby"><h3>대기실</h3><div id="s-players"></div><p id="s-info" class="hint"></p>
+    <div id="s-lobby" class="box lobby"><h3>대기실 <small>⚡에너지 15</small></h3><div id="s-players"></div><p id="s-info" class="hint"></p>
       <button id="s-start" class="big b-pink">시작</button></div>
     <canvas id="sCv" width="480" height="320" class="hidden"></canvas>
     <div id="s-scores" class="hint"></div>
@@ -46,7 +46,7 @@
   <!-- RAID -->
   <section id="raid" class="screen hidden">
     <div class="topbar"><button id="r-back" class="small">← 나가기</button><b>보스 레이드</b><span id="r-time"></span></div>
-    <div id="r-lobby" class="box lobby"><h3>몽꾸 레이드 대기실</h3><img src="assets/boss/monggu.png" class="boss-pre" alt="몽꾸"><div id="r-diff" class="diff-row"><button data-d="easy">🌱 쉬움<small>30코인</small></button><button data-d="normal">⭐ 보통<small>60코인</small></button><button data-d="hard">🔥 어려움<small>120코인</small></button></div><div id="r-players"></div><p id="r-info" class="hint"></p>
+    <div id="r-lobby" class="box lobby"><h3>몽꾸 레이드 대기실</h3><img src="assets/boss/monggu.png" class="boss-pre" alt="몽꾸"><div id="r-diff" class="diff-row"><button data-d="easy">🌱 쉬움<small>🪙30 · ⚡15</small></button><button data-d="normal">⭐ 보통<small>🪙60 · ⚡20</small></button><button data-d="hard">🔥 어려움<small>🪙120 · ⚡30</small></button></div><div id="r-players"></div><p id="r-info" class="hint"></p>
       <button id="r-start" class="big b-pink">레이드 시작</button></div>
     <canvas id="rCv" width="480" height="300" class="hidden"></canvas>
     <div class="row raid-act"><button id="r-atk" class="big b-pink">⭐ 공격</button><button id="r-skill" class="big b-blue">✨ 스킬</button></div>

@@ -1,7 +1,7 @@
 const { io } = require('socket.io-client');
 const URL = process.env.URL || 'http://localhost:3456';
 const mk = (id, n) => io(URL, { auth: { playerId: id, nickname: n }, transports: ['websocket'] });
-const a = mk('testaaaa-1111', '테스트A'), b = mk('testbbbb-2222', '테스트B');
+const a = mk('testaaaa-' + Date.now(), '테스트A'), b = mk('testbbbb-' + Date.now(), '테스트B');
 let ticks = 0, start = 0, points = 0;
 a.on('state', s => { if (!start++) { console.log('A state stage', s.pet.stage, 'coins', s.coins);
   a.emit('act', { action: 'buy', arg: 'snack' }, r => console.log('buy:', r));
@@ -12,5 +12,5 @@ a.on('v:start', d => { console.log('A start side', d.side, d.players.map(p => p.
 b.on('v:start', d => console.log('B start side', d.side));
 a.on('v:state', s => { ticks++; });
 a.on('v:point', p => { points++; console.log('point', p.score); if (points === 2) { console.log('ticks', ticks, '-> B forfeits'); b.emit('v:leave'); } });
-a.on('v:end', d => { console.log('A end', d); setTimeout(() => process.exit(0), 300); });
+a.on('v:end', d => { console.log('A end', d); if (d.energy !== 15) { console.error('FAIL volley energy'); process.exit(1); } setTimeout(() => process.exit(0), 300); });
 setTimeout(() => { console.log('TIMEOUT'); process.exit(1); }, 40000);

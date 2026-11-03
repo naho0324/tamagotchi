@@ -1,8 +1,9 @@
 const { io } = require('socket.io-client');
 const URL = process.env.URL || 'http://localhost:3456';
+const RUN = Date.now().toString(36); let k0 = 0;
 function run(n, hostStart) {
   return new Promise((res, rej) => {
-    const cl = [...Array(n)].map((_, i) => io(URL, { auth: { playerId: `snaketest-${n}-${i}`, nickname: `뱀${n}-${i}` }, transports: ['websocket'], forceNew: true }));
+    const cl = [...Array(n)].map((_, i) => io(URL, { auth: { playerId: `snaketest-${RUN}-${n}-${i}`, nickname: `뱀${n}-${i}` }, transports: ['websocket'], forceNew: true }));
     let started = false, states = 0, ended = 0, lobbyMax = 0, autoSeen = false;
     cl.forEach((c, i) => {
       c.on('connect', () => setTimeout(() => c.emit('s:join'), i * 50));

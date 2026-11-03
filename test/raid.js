@@ -1,9 +1,10 @@
 // Raid test: n clients join, follow the boss and attack; expect a win with 50 coins each.
 const { io } = require('socket.io-client');
+const RUN = Date.now().toString(36); let k0 = 0;
 const URL = process.env.URL || 'http://localhost:3456';
 function run(n, hostStart, idle, diff = 'normal') {
   return new Promise((res, rej) => {
-    const cl = [...Array(n)].map((_, i) => io(URL, { auth: { playerId: `raidtest-${n}-${idle ? 'i' : 'a'}-${diff}-${i}`, nickname: `레이드${i}` }, transports: ['websocket'], forceNew: true }));
+    const cl = [...Array(n)].map((_, i) => io(URL, { auth: { playerId: `raidtest-${RUN}-${k0++}-${n}-${idle ? 'i' : 'a'}-${diff}-${i}`, nickname: `레이드${i}` }, transports: ['websocket'], forceNew: true }));
     let started = false, states = 0, ended = 0, lobbyMax = 0, autoSeen = false, enraged = false, minHp = 100, out = null;
     cl.forEach((c, i) => {
       c.on('connect', () => setTimeout(() => c.emit('r:join'), i * 50));

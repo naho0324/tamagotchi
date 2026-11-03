@@ -22,8 +22,11 @@ const snake = new SnakeLobby(null, results => {
 });
 const raid = new RaidLobby(null, (win, results, diff, hp, max) => {
   for (const r of results) { const p = db.players[r.id]; if (p && !r.left) p.coins += r.coins; } save();
-  for (const r of results) { const so = io.sockets.sockets.get(r.sid); if (so) { so.emit('r:end', { win, diff, hp, max, results }); if (db.players[r.id]) so.emit('state', view(db.players[r.id])); } }
+  for (const r of results) { const so = io.sockets.sockets.get(r.sid); if (so) { so.emit('r:end', { win, diff, hp, max, results, energy: r.energy, coins: r.coins }); if (db.players[r.id]) so.emit('state', view(db.players[r.id])); } }
 });
+const lobbyGate = (p, cost) => db.players[p.id] ? canPlay(db.players[p.id], cost) : null;
+const lobbyCharge = (players, cost) => players.forEach(p => charge(p.id, cost));
+snake.gate = raid.gate = lobbyGate; snake.charge = raid.charge = lobbyCharge;
 const matches = new Map(); // socketId -> match
 
 function getPlayer(user) {
@@ -31,6 +34,18 @@ function getPlayer(user) {
   if (!pl) { pl = db.players[user.id] = G.newPlayer(user.id, user.nickname, Date.now()); }
   pl.nickname = user.nickname; G.update(pl, Date.now()); save(); return pl;
 }
+// ---- energy gate for minigames ----
+const COST = { volley: 15, snake: 15 };
+function canPlay(pl, cost) {
+  G.update(pl, Date.now()); const p = pl.pet;
+  if (p.stage === 'dead') return '하늘나라에 간 펫은 놀 수 없어요';
+  if (p.sleeping) return '자고 있어요 💤 깨운 뒤에 놀아요';
+  if (p.sick) return '아파서 놀 수 없어요. 약을 먹여주세요';
+  if (p.stats.energy < cost) return `에너지가 부족해요 (필요: ${cost})`;
+  return null;
+}
+function charge(id, cost) { const pl = db.players[id]; if (!pl) return; pl.pet.stats.energy = Math.max(0, pl.pet.stats.energy - cost); save();
+  for (const s of io.sockets.sockets.values()) if (s.user.id === id) s.emit('state', view(pl)); }
 function view(pl) { const { cooldowns, ...pet } = pl.pet; return { ...pl, pet, shop: G.SHOP, cfg: { hatchMs: G.CFG.hatchMs }, now: Date.now() }; }
 
 io.use((socket, next) => { const u = resolvePlayer(socket.handshake); if (!u) return next(new Error('auth')); socket.user = u; next(); });
@@ -54,22 +69,25 @@ io.on('connection', socket => {
   // volleyball
   const look = () => { const p = pl(); return { ...G.publicPet(p) }; };
   socket.on('v:queue', () => {
+    { const e = canPlay(pl(), COST.volley); if (e) return socket.emit('toast', e); }
     if (matches.has(socket.id)) return;
     if (queue && queue.socket.id !== socket.id && queue.socket.connected) {
       const a = queue; queue = null;
+      const ea = canPlay(db.players[a.socket.user.id], COST.volley); if (ea) { a.socket.emit('toast', ea); a.socket.emit('v:kicked', ea); queue = { socket, look: look() }; return socket.emit('v:waiting'); }
       startMatch([{ socket: a.socket, socketId: a.socket.id, id: a.socket.user.id, look: a.look }, { socket, socketId: socket.id, id: socket.user.id, look: look() }], false);
     } else { queue = { socket, look: look() }; socket.emit('v:waiting'); }
   });
   socket.on('v:cancel', () => { if (queue && queue.socket.id === socket.id) queue = null; });
-  socket.on('v:practice', () => { if (matches.has(socket.id)) return; if (queue && queue.socket.id === socket.id) queue = null;
+  socket.on('v:practice', () => { if (matches.has(socket.id)) return;
+    { const e = canPlay(pl(), COST.volley); if (e) return socket.emit('toast', e); } if (queue && queue.socket.id === socket.id) queue = null;
     startMatch([{ socket, socketId: socket.id, id: socket.user.id, look: look() }, { socketId: null, id: 'ai', look: { nickname: '연습봇', stage: 'child', char: 1 + Math.floor(Math.random() * 7), style: 3, wearing: {} } }], true); });
   socket.on('v:input', inp => { const m = matches.get(socket.id); if (m && inp) m.setInput(socket.id, inp); });
   socket.on('v:leave', () => { const m = matches.get(socket.id); if (m) m.leave(socket.id); });
-  socket.on('s:join', cb => { const e = snake.join(socket, look()); if (e && e !== 'already') socket.emit('toast', e); else snake.emitLobby(); });
+  socket.on('s:join', cb => { { const e = canPlay(pl(), COST.snake); if (e) { socket.emit('toast', e); return socket.emit('s:kicked', e); } } const e = snake.join(socket, look()); if (e && e !== 'already') socket.emit('toast', e); else snake.emitLobby(); });
   socket.on('s:leave', () => snake.leave(socket.id));
   socket.on('s:start', () => { const e = snake.start(socket.id); if (e) socket.emit('toast', e); });
   socket.on('s:dir', d => snake.setDir(socket.id, d));
-  socket.on('r:join', () => { const e = raid.join(socket, look()); if (e && e !== 'already') socket.emit('toast', e); else raid.emitLobby(); });
+  socket.on('r:join', () => { { const e = canPlay(pl(), raid.cost()); if (e) { socket.emit('toast', e); return socket.emit('r:kicked', e); } } const e = raid.join(socket, look()); if (e && e !== 'already') socket.emit('toast', e); else raid.emitLobby(); });
   socket.on('r:diff', d => { const e = raid.setDiff(socket.id, d); if (e) socket.emit('toast', e); });
   socket.on('r:leave', () => raid.leave(socket.id));
   socket.on('r:start', () => { const e = raid.start(socket.id); if (e) socket.emit('toast', e); });
@@ -80,11 +98,12 @@ io.on('connection', socket => {
 let mid = 0;
 function startMatch(players, practice) {
   const room = 'm' + (++mid);
+  for (const p of players) if (p.socketId) charge(p.id, COST.volley);
   const m = new Match(io, room, players, (m, winner, forfeit) => {
     const reward = practice ? 10 : 30; const w = players[winner];
     if (w.socketId && db.players[w.id]) { db.players[w.id].coins += reward; db.players[w.id].wins = (db.players[w.id].wins || 0) + 1; save(); }
     for (const p of players) if (p.socket) {
-      p.socket.emit('v:end', { winner, score: m.score, forfeit, reward: p === w ? reward : 0 });
+      p.socket.emit('v:end', { winner, score: m.score, forfeit, reward: p === w ? reward : 0, energy: COST.volley });
       p.socket.leave(room); matches.delete(p.socketId); if (db.players[p.id]) p.socket.emit('state', view(db.players[p.id]));
     }
   });

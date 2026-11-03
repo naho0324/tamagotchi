@@ -5,16 +5,17 @@ const POWER = { egg: 1, baby: 1, child: 1.2, adult: 1.4 };
 const ATK_CD = 9, SKILL_CD = 150, ATK_DMG = 6, SKILL_DMG = 36; // ticks / dmg
 const BOSS_Y = 150, BOSS_HW = 46, BOSS_TOP = 30; // boss feet at y=BOSS_Y, hitbox
 const DIFF = { // hp: boss HP mult, gap: attack interval mult, dmg: damage mult, tele: telegraph mult, enr: enrage threshold
-  easy: { name: '쉬움', hp: 0.6, gap: 1.5, dmg: 0.6, tele: 1.4, enr: 0.5, move: 0.8, bombs: -1, reward: 30 },
-  normal: { name: '보통', hp: 0.85, gap: 1.15, dmg: 0.8, tele: 1.15, enr: 0.5, move: 1, bombs: 0, reward: 60 },
-  hard: { name: '어려움', hp: 1.5, gap: 0.8, dmg: 1.3, tele: 0.85, enr: 0.6, move: 1.25, bombs: 1, reward: 120 },
+  easy: { name: '쉬움', hp: 0.6, gap: 1.5, dmg: 0.6, tele: 1.4, enr: 0.5, move: 0.8, bombs: -1, reward: 30, energy: 15 },
+  normal: { name: '보통', hp: 0.85, gap: 1.15, dmg: 0.8, tele: 1.15, enr: 0.5, move: 1, bombs: 0, reward: 60, energy: 20 },
+  hard: { name: '어려움', hp: 1.5, gap: 0.8, dmg: 1.3, tele: 0.85, enr: 0.6, move: 1.25, bombs: 1, reward: 120, energy: 30 },
 };
 class RaidLobby {
   constructor(io, onEnd) { this.io = io; this.onEnd = onEnd; this.room = 'raid'; this.players = []; this.state = 'lobby'; this.countdown = null; this.diff = 'normal'; }
-  emitLobby() { this.io.to(this.room).emit('r:lobby', { diff: this.diff, state: this.state, countdown: this.countdown, host: this.players[0] && this.players[0].sid,
+  emitLobby() { this.io.to(this.room).emit('r:lobby', { diff: this.diff, cost: this.cost(), state: this.state, countdown: this.countdown, host: this.players[0] && this.players[0].sid,
     players: this.players.map(p => ({ sid: p.sid, nickname: p.look.nickname, stage: p.look.stage, char: p.look.char })) }); }
   setDiff(sid, d) { if (this.state !== 'lobby' || !DIFF[d]) return '바꿀 수 없어요'; if (!this.players[0] || this.players[0].sid !== sid) return '방장만 난이도를 고를 수 있어요';
     this.diff = d; this.emitLobby(); return null; }
+  cost() { return DIFF[this.diff].energy; }
   join(socket, look) {
     if (this.players.find(p => p.sid === socket.id)) return 'already';
     if (this.state !== 'lobby') return '레이드가 진행 중이에요. 잠시 후 다시!';
@@ -25,7 +26,7 @@ class RaidLobby {
   leave(sid) {
     const i = this.players.findIndex(p => p.sid === sid); if (i < 0) return;
     const p = this.players[i]; p.socket.leave(this.room);
-    if (this.state === 'lobby') { this.players.splice(i, 1); this.checkAuto(); this.emitLobby(); }
+    if (this.state === 'lobby') { this.players.splice(i, 1); if (!this.players.length) this.diff = 'normal'; this.checkAuto(); this.emitLobby(); }
     else { p.left = true; const f = this.fighters.find(f => f.sid === sid); if (f) { f.hp = 0; f.alive = false; } }
   }
   checkAuto() {
@@ -37,6 +38,11 @@ class RaidLobby {
     if (this.state !== 'lobby' || !this.players.length) return '시작할 수 없어요';
     if (bySid && this.players[0].sid !== bySid) return '방장만 시작할 수 있어요';
     clearInterval(this.autoTimer); this.autoTimer = null; this.countdown = null;
+    const cost = this.cost(); // energy gate: kick pets that can't play right now
+    if (this.gate) for (const p of this.players.slice()) { const e = this.gate(p, cost);
+      if (e) { p.socket.emit('toast', e); p.socket.emit('r:kicked', e); p.socket.leave(this.room); this.players.splice(this.players.indexOf(p), 1); } }
+    if (!this.players.length) { this.checkAuto(); this.emitLobby(); return '에너지가 부족해요'; }
+    this.paid = cost; if (this.charge) this.charge(this.players, cost);
     this.state = 'playing'; this.ticks = 0; this.over = false;
     const n = this.players.length, D = this.D = DIFF[this.diff], maxHp = Math.round((500 + 300 * n) * D.hp);
     this.boss = { x: W / 2, dir: 1, hp: maxHp, max: maxHp, flinch: 0, next: 60, enr: false };
@@ -113,10 +119,10 @@ class RaidLobby {
   }
   end(win) {
     this.over = true; clearInterval(this.timer);
-    const results = this.players.map(p => ({ sid: p.sid, id: p.id, nickname: p.look.nickname, coins: win ? this.D.reward : 5, left: p.left }));
+    const results = this.players.map(p => ({ sid: p.sid, id: p.id, nickname: p.look.nickname, coins: win ? this.D.reward : 5, energy: this.paid, left: p.left }));
     this.onEnd(win, results, this.D.name, Math.ceil(this.boss.hp), this.boss.max);
     for (const p of this.players) p.socket.leave(this.room);
-    this.players = []; this.fighters = null; this.state = 'lobby'; this.emitLobby();
+    this.players = []; this.fighters = null; this.state = 'lobby'; this.diff = 'normal'; this.emitLobby();
   }
 }
 const clampX = x => Math.max(16, Math.min(W - 16, x)), clampY = y => Math.max(GY0, Math.min(GY1, y));

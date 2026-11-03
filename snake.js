@@ -7,6 +7,7 @@ class SnakeLobby {
   constructor(io, onEnd) { this.io = io; this.onEnd = onEnd; this.room = 'snake'; this.players = []; this.state = 'lobby'; this.countdown = null; }
   emitLobby() { this.io.to(this.room).emit('s:lobby', { state: this.state, countdown: this.countdown, host: this.players[0] && this.players[0].sid,
     players: this.players.map(p => ({ sid: p.sid, nickname: p.look.nickname, color: p.color })) }); }
+  cost() { return 15; }
   join(socket, look) {
     if (this.players.find(p => p.sid === socket.id)) return 'already';
     if (this.state !== 'lobby') return '게임이 진행 중이에요. 잠시 후 다시!';
@@ -30,6 +31,11 @@ class SnakeLobby {
     if (this.state !== 'lobby' || !this.players.length) return '시작할 수 없어요';
     if (bySid && this.players[0].sid !== bySid) return '방장만 시작할 수 있어요';
     clearInterval(this.autoTimer); this.autoTimer = null; this.countdown = null;
+    const cost = this.cost(); // energy gate: kick pets that can't play right now
+    if (this.gate) for (const p of this.players.slice()) { const e = this.gate(p, cost);
+      if (e) { p.socket.emit('toast', e); p.socket.emit('s:kicked', e); p.socket.leave(this.room); this.players.splice(this.players.indexOf(p), 1); } }
+    if (!this.players.length) { this.checkAuto(); this.emitLobby(); return '에너지가 부족해요'; }
+    this.paid = cost; if (this.charge) this.charge(this.players, cost);
     this.state = 'playing'; this.ticks = 0; this.deathOrder = []; this.food = [];
     this.snakes = this.players.map((p, i) => { const [x, y, d] = SPAWNS[i], [dx, dy] = DIRS[d];
       return { sid: p.sid, color: p.color, nickname: p.look.nickname, look: p.look, dir: d, queue: [], alive: true, grow: 0,
@@ -73,7 +79,7 @@ class SnakeLobby {
     const solo = this.snakes.length === 1;
     const results = ranking.map((s, i) => { const p = this.players.find(p => p.sid === s.sid);
       const coins = solo ? Math.min(15, Math.floor(s.body.length / 2)) : [20, 12, 8, 5, 3, 2][i];
-      return { sid: s.sid, id: p.id, nickname: s.nickname, rank: i + 1, length: s.body.length, coins, left: p.left }; });
+      return { sid: s.sid, id: p.id, nickname: s.nickname, rank: i + 1, length: s.body.length, coins, energy: this.paid, left: p.left }; });
     this.onEnd(results);
     for (const p of this.players) p.socket.leave(this.room);
     this.players = []; this.snakes = null; this.state = 'lobby'; this.emitLobby();

@@ -271,7 +271,7 @@ function renderRaidLobby(l) {
   l.players.forEach(p => { const d = document.createElement('div'); d.className = 'item';
     d.innerHTML = `<span>${p.nickname}${p.sid === socket.id ? ' (나)' : ''} <small>${STAGE_KO[p.stage] || ''}</small></span><span>${p.sid === l.host ? '👑 방장' : ''}</span>`; pl.appendChild(d); });
   $('#r-start').classList.toggle('hidden', l.host !== socket.id || l.state !== 'lobby');
-  $('#r-info').textContent = l.state === 'playing' ? '레이드 진행 중...' : l.countdown ? `${l.countdown}초 후 자동 시작!` : (l.players.length < 2 ? '동료를 기다리는 중 · 혼자서도 도전할 수 있어요' : '') + ` · 난이도: ${DIFF_KO[l.diff] || '보통'}` + (l.host === socket.id ? ' (방장이 선택)' : ' (방장이 고르는 중)');
+  $('#r-info').textContent = l.state === 'playing' ? '레이드 진행 중...' : l.countdown ? `${l.countdown}초 후 자동 시작!` : (l.players.length < 2 ? '동료를 기다리는 중 · 혼자서도 도전할 수 있어요' : '') + ` · 난이도: ${DIFF_KO[l.diff] || '보통'} (⚡${l.cost})` + (l.host === socket.id ? ' (방장이 선택)' : ' (방장이 고르는 중)');
 }
 function rPredict(me) { const c = RD.cfg; // same movement rules as raid.js
   if (rkeys.l) me.x -= c.SPEED; if (rkeys.r) me.x += c.SPEED; if (rkeys.u) me.y -= c.SPEED * 0.7; if (rkeys.d) me.y += c.SPEED * 0.7;
@@ -347,7 +347,9 @@ function raidTick() { // fixed-step local prediction for own pet
   const sk = RD.skLocal > 0; $('#r-skill').disabled = sk || !(me && me[4]); $('#r-skill').textContent = sk ? `✨ 스킬 (${Math.ceil(RD.skLocal / 30)})` : '✨ 스킬';
   $('#r-atk').disabled = !(me && me[4]);
 }
+function kickedToPlaza(m) { toast(m); RD = null; SN = null; enterPlaza(); }
 function bindRaid() {
+  socket.on('r:kicked', kickedToPlaza); socket.on('s:kicked', kickedToPlaza); socket.on('v:kicked', m => { $('#match-status').textContent = m; });
   socket.on('r:lobby', l => { if (!$('#raid').classList.contains('hidden') && !RD) renderRaidLobby(l); });
   socket.on('r:start', d => { RD = { diffName: d.diffName, cur: null, looks: d.looks, cfg: d.cfg, disp: {}, pred: { x: 240, y: 255 }, acc: 0, lastT: 0, skLocal: 0, tAt: 0, bx: null, startAt: performance.now(), init: false };
     Object.keys(rkeys).forEach(k => rkeys[k] = false); $('#r-lobby').classList.add('hidden'); rcv.classList.remove('hidden'); $('#raid .raid-act').classList.remove('hidden'); });
@@ -356,7 +358,7 @@ function bindRaid() {
     if (!RD.init || Math.hypot(sx - P.x, sy - P.y) > 40) { P.x = sx; P.y = sy; RD.init = true; } else { P.x += (sx - P.x) * 0.08; P.y += (sy - P.y) * 0.08; }
     RD.skLocal = Math.max(sk, Math.min(RD.skLocal, sk + 3)); });
   socket.on('r:end', d => { RD = null; $('#end-title').textContent = (d.win ? '👑 몽꾸 격파!' : '😢 레이드 실패...') + ` (${d.diff})`;
-    $('#end-msg').textContent = (d.win ? '모두 함께 승리했어요!' : `몽꾸 HP ${d.hp}/${d.max} 남음`) + ` · 참가자 전원 +${d.results[0] ? d.results[0].coins : 0}코인`;
+    $('#end-msg').textContent = (d.win ? '모두 함께 승리했어요!' : `몽꾸 HP ${d.hp}/${d.max} 남음`) + ` · +${d.coins || 0} 코인, 에너지 -${d.energy || 0}`;
     $('#end-modal').classList.remove('hidden'); });
 }
 function bindSocket() {
@@ -369,7 +371,7 @@ function bindSocket() {
     $('#s-scores').textContent = st.s.map(s => `${s.a ? '' : '💀'}${s.n} ${s.b.length}`).join(' · '); });
   socket.on('s:end', res => { SN = null; const me = res.find(r => r.sid === socket.id);
     $('#end-title').textContent = me && me.rank === 1 ? (res.length > 1 ? '🏆 1등!' : '🐍 게임 끝!') : `${me ? me.rank : '-'}등`;
-    $('#end-msg').textContent = res.map(r => `${r.rank}등 ${r.nickname} (길이 ${r.length}) +${r.coins}`).join(' / ');
+    $('#end-msg').textContent = res.map(r => `${r.rank}등 ${r.nickname} (길이 ${r.length}) +${r.coins}`).join(' / ') + (me ? ` · 나: +${me.coins} 코인, 에너지 -${me.energy || 0}` : '');
     $('#end-modal').classList.remove('hidden'); });
   socket.on('plaza:state', l => plazaList = l);
   socket.on('v:waiting', () => $('#match-status').textContent = '상대를 찾는 중... (다른 사람이 매칭을 누르면 시작!)');
@@ -382,7 +384,7 @@ function bindSocket() {
     else { me.x += (sx - me.x) * 0.06; if (sy >= 243.9 && me.y >= 243.9) me.y = sy; } $('#v-score').textContent = `${st.s[0]} : ${st.s[1]}`; } });
   socket.on('v:end', d => { const win = V && d.winner === V.side; V = null;
     $('#end-title').textContent = win ? '🏆 승리!' : '😢 패배...';
-    $('#end-msg').textContent = `${d.score[0]} : ${d.score[1]}` + (d.forfeit ? ' (기권)' : '') + (d.reward ? ` · +${d.reward}코인` : '');
+    $('#end-msg').textContent = `${d.score[0]} : ${d.score[1]}` + (d.forfeit ? ' (기권)' : '') + ` · +${d.reward || 0} 코인, 에너지 -${d.energy || 0}`;
     $('#end-modal').classList.remove('hidden'); });
 }
 $('#end-ok').onclick = () => { closeModal('end-modal'); if (!$('#snake').classList.contains('hidden') || !$('#raid').classList.contains('hidden')) { enterPlaza(); return; } if (inPlaza) { show('plaza'); $('#match-status').textContent = '화면을 눌러 이동해요'; } else show('home'); };

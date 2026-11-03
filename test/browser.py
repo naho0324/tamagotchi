@@ -26,7 +26,7 @@ async def main():
         await A.wait_for_timeout(300); await A.screenshot(path='test/volley_live.png')
         print('A score', await A.text_content('#v-score'), 'B score', await B.text_content('#v-score'))
         await B.click('#v-quit'); await A.wait_for_timeout(1500)
-        print('A end:', await A.text_content('#end-title'), await A.text_content('#end-msg'))
+        print('A end:', await A.text_content('#end-title'), await A.text_content('#end-msg')); await A.screenshot(path='test/result_volley.png')
         print('ERRORS:', errs)
         await b.close()
 asyncio.run(main())
