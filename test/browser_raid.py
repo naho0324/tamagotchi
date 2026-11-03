@@ -11,7 +11,8 @@ async def main():
             await pg.goto('http://localhost:3456'); await pg.fill('#nick', n); await pg.click('#nick-ok'); await pg.wait_for_timeout(2500)
             await pg.click('[data-act=plaza]'); await pg.wait_for_timeout(500); await pg.click('#raid-btn'); await pg.wait_for_timeout(700); pages.append(pg)
         A, B = pages
-        await A.screenshot(path='test/raid_lobby.png')
+        await A.click('#r-diff [data-d=hard]'); await A.wait_for_timeout(400); await A.click('#r-diff [data-d=normal]'); await A.wait_for_timeout(400)
+        await A.screenshot(path='test/raid_lobby.png'); await B.screenshot(path='test/raid_lobby_guest.png')
         await A.click('#r-start'); await A.wait_for_timeout(2500)
         for pg in pages: await pg.evaluate(BOT)
         await A.wait_for_timeout(1500); await A.screenshot(path='test/raid_game.png')

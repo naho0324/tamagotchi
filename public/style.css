@@ -32,3 +32,8 @@ canvas, img { image-rendering: pixelated; image-rendering: crisp-edges; }
 
 .boss-pre { height: 110px; display: block; margin: 4px auto; }
 .raid-act button:disabled { opacity: .55; }
+.diff-row { display: flex; gap: 6px; margin: 6px 0 10px; }
+.diff-row button { flex: 1; background: #fff5f8; border: 3px solid #1d2557; padding: 6px 2px; font: inherit; display: flex; flex-direction: column; align-items: center; cursor: pointer; }
+.diff-row button small { font-size: 11px; opacity: .8; }
+.diff-row button.sel { background: #f7a8c4; box-shadow: inset 0 -3px 0 #c2455a; }
+.diff-row button:disabled:not(.sel) { opacity: .5; cursor: default; }

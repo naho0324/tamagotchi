@@ -4,10 +4,17 @@ const GY0 = 205, GY1 = 285, SPEED = 3.2, PHP = 100;
 const POWER = { egg: 1, baby: 1, child: 1.2, adult: 1.4 };
 const ATK_CD = 9, SKILL_CD = 150, ATK_DMG = 6, SKILL_DMG = 36; // ticks / dmg
 const BOSS_Y = 150, BOSS_HW = 46, BOSS_TOP = 30; // boss feet at y=BOSS_Y, hitbox
+const DIFF = { // hp: boss HP mult, gap: attack interval mult, dmg: damage mult, tele: telegraph mult, enr: enrage threshold
+  easy: { name: '쉬움', hp: 0.6, gap: 1.5, dmg: 0.6, tele: 1.4, enr: 0.5, move: 0.8, bombs: -1, reward: 30 },
+  normal: { name: '보통', hp: 0.85, gap: 1.15, dmg: 0.8, tele: 1.15, enr: 0.5, move: 1, bombs: 0, reward: 60 },
+  hard: { name: '어려움', hp: 1.5, gap: 0.8, dmg: 1.3, tele: 0.85, enr: 0.6, move: 1.25, bombs: 1, reward: 120 },
+};
 class RaidLobby {
-  constructor(io, onEnd) { this.io = io; this.onEnd = onEnd; this.room = 'raid'; this.players = []; this.state = 'lobby'; this.countdown = null; }
-  emitLobby() { this.io.to(this.room).emit('r:lobby', { state: this.state, countdown: this.countdown, host: this.players[0] && this.players[0].sid,
+  constructor(io, onEnd) { this.io = io; this.onEnd = onEnd; this.room = 'raid'; this.players = []; this.state = 'lobby'; this.countdown = null; this.diff = 'normal'; }
+  emitLobby() { this.io.to(this.room).emit('r:lobby', { diff: this.diff, state: this.state, countdown: this.countdown, host: this.players[0] && this.players[0].sid,
     players: this.players.map(p => ({ sid: p.sid, nickname: p.look.nickname, stage: p.look.stage, char: p.look.char })) }); }
+  setDiff(sid, d) { if (this.state !== 'lobby' || !DIFF[d]) return '바꿀 수 없어요'; if (!this.players[0] || this.players[0].sid !== sid) return '방장만 난이도를 고를 수 있어요';
+    this.diff = d; this.emitLobby(); return null; }
   join(socket, look) {
     if (this.players.find(p => p.sid === socket.id)) return 'already';
     if (this.state !== 'lobby') return '레이드가 진행 중이에요. 잠시 후 다시!';
@@ -31,14 +38,14 @@ class RaidLobby {
     if (bySid && this.players[0].sid !== bySid) return '방장만 시작할 수 있어요';
     clearInterval(this.autoTimer); this.autoTimer = null; this.countdown = null;
     this.state = 'playing'; this.ticks = 0; this.over = false;
-    const n = this.players.length, maxHp = 500 + 300 * n;
+    const n = this.players.length, D = this.D = DIFF[this.diff], maxHp = Math.round((500 + 300 * n) * D.hp);
     this.boss = { x: W / 2, dir: 1, hp: maxHp, max: maxHp, flinch: 0, next: 60, enr: false };
     this.fighters = this.players.map((p, i) => ({ sid: p.sid, nickname: p.look.nickname, x: 60 + i * (360 / Math.max(1, n - 1 || 1)), y: 255, hp: PHP, alive: true,
       inp: {}, atk: 0, sk: 0, inv: 0, pow: POWER[p.look.stage] || 1 }));
     if (n === 1) this.fighters[0].x = W / 2;
     this.stars = []; this.bombs = []; this.frogs = []; this.laser = null; this.sid = 0;
     this.emitLobby();
-    this.io.to(this.room).emit('r:start', { time: TIME_LIMIT, looks: Object.fromEntries(this.players.map(p => [p.sid, p.look])),
+    this.io.to(this.room).emit('r:start', { diff: this.diff, diffName: D.name, time: TIME_LIMIT, looks: Object.fromEntries(this.players.map(p => [p.sid, p.look])),
       cfg: { W, H, GY0, GY1, SPEED, SKILL_CD, ATK_CD } });
     this.timer = setInterval(() => this.step(), TICK); return null;
   }
@@ -48,19 +55,19 @@ class RaidLobby {
     if (kind === 'atk' && f.atk <= 0) { f.atk = ATK_CD; this.stars.push({ id: ++this.sid, x: f.x, y: f.y - 30, vy: -9, dmg: ATK_DMG * f.pow, big: 0, o: sid }); }
     if (kind === 'skill' && f.sk <= 0) { f.sk = SKILL_CD; this.stars.push({ id: ++this.sid, x: f.x, y: f.y - 30, vy: -7, dmg: SKILL_DMG * f.pow, big: 1, o: sid }); }
   }
-  hurt(f, dmg) { if (!f.alive || f.inv > 0) return; f.hp = Math.max(0, f.hp - dmg); f.inv = 30; if (f.hp <= 0) f.alive = false; }
+  hurt(f, dmg) { if (!f.alive || f.inv > 0) return; f.hp = Math.max(0, f.hp - Math.round(dmg * this.D.dmg)); f.inv = 30; if (f.hp <= 0) f.alive = false; }
   bossAttack() {
-    const b = this.boss, alive = this.fighters.filter(f => f.alive); if (!alive.length) return;
+    const b = this.boss, D = this.D, T = v => Math.round(v * D.tele), alive = this.fighters.filter(f => f.alive); if (!alive.length) return;
     const r = Math.random(), pick = () => alive[Math.floor(Math.random() * alive.length)];
     if (r < 0.4) { // heart bombs: warn shadow, then fall
-      const k = (b.enr ? 4 : 3) + Math.floor(Math.random() * 2);
+      const k = Math.max(1, (b.enr ? 4 : 3) + D.bombs) + Math.floor(Math.random() * 2);
       for (let i = 0; i < k; i++) { const t = i < alive.length ? alive[i] : null;
         const x = t ? t.x + (Math.random() - 0.5) * 30 : 30 + Math.random() * (W - 60), y = t ? t.y : GY0 + Math.random() * (GY1 - GY0);
-        this.bombs.push({ x: clampX(x), y: clampY(y), t: b.enr ? 36 : 48, max: b.enr ? 36 : 48 }); }
+        this.bombs.push({ x: clampX(x), y: clampY(y), t: T(b.enr ? 36 : 48), max: T(b.enr ? 36 : 48) }); }
     } else if (r < 0.7 && !this.laser) { // sunglasses laser sweep, telegraphed
-      const ltr = Math.random() < 0.5; this.laser = { x0: ltr ? 20 : W - 20, x1: ltr ? W - 20 : 20, warn: b.enr ? 30 : 42, dur: b.enr ? 30 : 40, k: 0, hit: new Set() };
+      const ltr = Math.random() < 0.5; this.laser = { x0: ltr ? 20 : W - 20, x1: ltr ? W - 20 : 20, warn: T(b.enr ? 30 : 42), dur: T(b.enr ? 30 : 40), k: 0, hit: new Set() };
     } else { // frog keychain thrown at a player
-      const t = pick(), sx = b.x + 20, sy = BOSS_Y - 50, d = Math.hypot(t.x - sx, t.y - 10 - sy) || 1, sp = b.enr ? 5.5 : 4;
+      const t = pick(), sx = b.x + 20, sy = BOSS_Y - 50, d = Math.hypot(t.x - sx, t.y - 10 - sy) || 1, sp = (b.enr ? 5.5 : 4) / Math.sqrt(D.tele);
       this.frogs.push({ x: sx, y: sy, vx: (t.x - sx) / d * sp, vy: (t.y - 10 - sy) / d * sp });
       if (b.enr) { const t2 = pick(), d2 = Math.hypot(t2.x - sx, t2.y - sy) || 1; this.frogs.push({ x: sx, y: sy, vx: (t2.x - sx + 40) / d2 * sp, vy: (t2.y - sy) / d2 * sp }); }
     }
@@ -68,9 +75,9 @@ class RaidLobby {
   step() {
     if (this.over) return; this.ticks++;
     const b = this.boss;
-    b.enr = b.hp < b.max / 2;
-    b.x += b.dir * (b.enr ? 1.3 : 0.6); if (b.x > W - 100) b.dir = -1; if (b.x < 100) b.dir = 1; if (b.flinch > 0) b.flinch--;
-    if (--b.next <= 0) { this.bossAttack(); b.next = Math.round((b.enr ? 45 : 80) + Math.random() * 30); }
+    const D = this.D; b.enr = b.hp < b.max * D.enr;
+    b.x += b.dir * (b.enr ? 1.3 : 0.6) * D.move; if (b.x > W - 100) b.dir = -1; if (b.x < 100) b.dir = 1; if (b.flinch > 0) b.flinch--;
+    if (--b.next <= 0) { this.bossAttack(); b.next = Math.round(((b.enr ? 45 : 80) + Math.random() * 30) * D.gap); }
     for (const f of this.fighters) {
       if (f.atk > 0) f.atk--; if (f.sk > 0) f.sk--; if (f.inv > 0) f.inv--;
       if (!f.alive) continue; const i = f.inp;
@@ -106,11 +113,11 @@ class RaidLobby {
   }
   end(win) {
     this.over = true; clearInterval(this.timer);
-    const results = this.players.map(p => ({ sid: p.sid, id: p.id, nickname: p.look.nickname, coins: win ? 50 : 5, left: p.left }));
-    this.onEnd(win, results, Math.ceil(this.boss.hp), this.boss.max);
+    const results = this.players.map(p => ({ sid: p.sid, id: p.id, nickname: p.look.nickname, coins: win ? this.D.reward : 5, left: p.left }));
+    this.onEnd(win, results, this.D.name, Math.ceil(this.boss.hp), this.boss.max);
     for (const p of this.players) p.socket.leave(this.room);
     this.players = []; this.fighters = null; this.state = 'lobby'; this.emitLobby();
   }
 }
 const clampX = x => Math.max(16, Math.min(W - 16, x)), clampY = y => Math.max(GY0, Math.min(GY1, y));
-module.exports = { RaidLobby, W, H, GY0, GY1, SPEED, TIME_LIMIT };
+module.exports = { DIFF, RaidLobby, W, H, GY0, GY1, SPEED, TIME_LIMIT };

@@ -263,12 +263,15 @@ $('#r-skill').addEventListener('pointerdown', e => { e.preventDefault(); rAct('s
 $('#raid-btn').onclick = () => { socket.emit('plaza:leave'); socket.emit('v:cancel'); show('raid'); RD = null; rcv.classList.add('hidden'); $('#raid .raid-act').classList.add('hidden'); $('#r-lobby').classList.remove('hidden'); socket.emit('r:join'); };
 $('#r-back').onclick = () => { socket.emit('r:leave'); RD = null; enterPlaza(); };
 $('#r-start').onclick = () => socket.emit('r:start');
+const DIFF_KO = { easy: '쉬움', normal: '보통', hard: '어려움' };
+document.querySelectorAll('#r-diff button').forEach(b => b.onclick = () => socket.emit('r:diff', b.dataset.d));
 function renderRaidLobby(l) {
+  document.querySelectorAll('#r-diff button').forEach(b => { b.classList.toggle('sel', b.dataset.d === l.diff); b.disabled = l.host !== socket.id; });
   const pl = $('#r-players'); pl.innerHTML = '';
   l.players.forEach(p => { const d = document.createElement('div'); d.className = 'item';
     d.innerHTML = `<span>${p.nickname}${p.sid === socket.id ? ' (나)' : ''} <small>${STAGE_KO[p.stage] || ''}</small></span><span>${p.sid === l.host ? '👑 방장' : ''}</span>`; pl.appendChild(d); });
   $('#r-start').classList.toggle('hidden', l.host !== socket.id || l.state !== 'lobby');
-  $('#r-info').textContent = l.state === 'playing' ? '레이드 진행 중...' : l.countdown ? `${l.countdown}초 후 자동 시작!` : l.players.length < 2 ? '동료를 기다리는 중 · 혼자서도 도전할 수 있어요' : '';
+  $('#r-info').textContent = l.state === 'playing' ? '레이드 진행 중...' : l.countdown ? `${l.countdown}초 후 자동 시작!` : (l.players.length < 2 ? '동료를 기다리는 중 · 혼자서도 도전할 수 있어요' : '') + ` · 난이도: ${DIFF_KO[l.diff] || '보통'}` + (l.host === socket.id ? ' (방장이 선택)' : ' (방장이 고르는 중)');
 }
 function rPredict(me) { const c = RD.cfg; // same movement rules as raid.js
   if (rkeys.l) me.x -= c.SPEED; if (rkeys.r) me.x += c.SPEED; if (rkeys.u) me.y -= c.SPEED * 0.7; if (rkeys.d) me.y += c.SPEED * 0.7;
@@ -302,7 +305,7 @@ function drawRaid(t) {
     c.restore();
   }
   // HP bar
-  c.fillStyle = '#fff'; c.font = '12px Galmuri11, monospace'; c.textAlign = 'center'; c.fillText('몽꾸 HP' + (enr ? ' · 분노!' : ''), 240, 14); c.textAlign = 'left';
+  c.fillStyle = '#fff'; c.font = '12px Galmuri11, monospace'; c.textAlign = 'center'; c.fillText(`몽꾸 HP [${RD.diffName || '보통'}]` + (enr ? ' · 분노!' : ''), 240, 14); c.textAlign = 'left';
   c.fillStyle = '#1d2557'; c.fillRect(98, 18, 284, 12); c.fillStyle = '#5a2a4a'; c.fillRect(100, 20, 280, 8); c.fillStyle = enr ? '#ff3050' : '#f25a7a'; c.fillRect(100, 20, 280 * bhp / bmax, 8);
   // bombs: warning shadow then heart falls
   for (const [x, y, tt, mx] of st.m) {
@@ -346,13 +349,13 @@ function raidTick() { // fixed-step local prediction for own pet
 }
 function bindRaid() {
   socket.on('r:lobby', l => { if (!$('#raid').classList.contains('hidden') && !RD) renderRaidLobby(l); });
-  socket.on('r:start', d => { RD = { cur: null, looks: d.looks, cfg: d.cfg, disp: {}, pred: { x: 240, y: 255 }, acc: 0, lastT: 0, skLocal: 0, tAt: 0, bx: null, startAt: performance.now(), init: false };
+  socket.on('r:start', d => { RD = { diffName: d.diffName, cur: null, looks: d.looks, cfg: d.cfg, disp: {}, pred: { x: 240, y: 255 }, acc: 0, lastT: 0, skLocal: 0, tAt: 0, bx: null, startAt: performance.now(), init: false };
     Object.keys(rkeys).forEach(k => rkeys[k] = false); $('#r-lobby').classList.add('hidden'); rcv.classList.remove('hidden'); $('#raid .raid-act').classList.remove('hidden'); });
   socket.on('r:state', st => { if (!RD) return; RD.cur = st; RD.tAt = performance.now(); $('#r-time').textContent = `⏱ ${Math.floor(st.t / 60)}:${String(st.t % 60).padStart(2, '0')}`;
     const me = st.p.find(q => q[0] === socket.id); if (!me) return; const [, sx, sy, , , sk] = me, P = RD.pred;
     if (!RD.init || Math.hypot(sx - P.x, sy - P.y) > 40) { P.x = sx; P.y = sy; RD.init = true; } else { P.x += (sx - P.x) * 0.08; P.y += (sy - P.y) * 0.08; }
     RD.skLocal = Math.max(sk, Math.min(RD.skLocal, sk + 3)); });
-  socket.on('r:end', d => { RD = null; $('#end-title').textContent = d.win ? '👑 몽꾸 격파!' : '😢 레이드 실패...';
+  socket.on('r:end', d => { RD = null; $('#end-title').textContent = (d.win ? '👑 몽꾸 격파!' : '😢 레이드 실패...') + ` (${d.diff})`;
     $('#end-msg').textContent = (d.win ? '모두 함께 승리했어요!' : `몽꾸 HP ${d.hp}/${d.max} 남음`) + ` · 참가자 전원 +${d.results[0] ? d.results[0].coins : 0}코인`;
     $('#end-modal').classList.remove('hidden'); });
 }

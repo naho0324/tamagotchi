@@ -20,9 +20,9 @@ const snake = new SnakeLobby(null, results => {
   for (const r of results) { const p = db.players[r.id]; if (p && !r.left) p.coins += r.coins; } save();
   for (const r of results) { const so = io.sockets.sockets.get(r.sid); if (so) { so.emit('s:end', results); if (db.players[r.id]) so.emit('state', view(db.players[r.id])); } }
 });
-const raid = new RaidLobby(null, (win, results, hp, max) => {
+const raid = new RaidLobby(null, (win, results, diff, hp, max) => {
   for (const r of results) { const p = db.players[r.id]; if (p && !r.left) p.coins += r.coins; } save();
-  for (const r of results) { const so = io.sockets.sockets.get(r.sid); if (so) { so.emit('r:end', { win, hp, max, results }); if (db.players[r.id]) so.emit('state', view(db.players[r.id])); } }
+  for (const r of results) { const so = io.sockets.sockets.get(r.sid); if (so) { so.emit('r:end', { win, diff, hp, max, results }); if (db.players[r.id]) so.emit('state', view(db.players[r.id])); } }
 });
 const matches = new Map(); // socketId -> match
 
@@ -70,6 +70,7 @@ io.on('connection', socket => {
   socket.on('s:start', () => { const e = snake.start(socket.id); if (e) socket.emit('toast', e); });
   socket.on('s:dir', d => snake.setDir(socket.id, d));
   socket.on('r:join', () => { const e = raid.join(socket, look()); if (e && e !== 'already') socket.emit('toast', e); else raid.emitLobby(); });
+  socket.on('r:diff', d => { const e = raid.setDiff(socket.id, d); if (e) socket.emit('toast', e); });
   socket.on('r:leave', () => raid.leave(socket.id));
   socket.on('r:start', () => { const e = raid.start(socket.id); if (e) socket.emit('toast', e); });
   socket.on('r:input', inp => raid.input(socket.id, inp));
