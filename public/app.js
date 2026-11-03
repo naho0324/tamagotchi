@@ -32,7 +32,7 @@ function start() {
   S = loadSave(ident); prevStage = S.pet.stage; tickSim(); renderHud();
   socket = io({ auth: ident, transports: ['websocket'] });
   socket.on('connect_error', e => toast('연결 실패: ' + e.message));
-  socket.on('connect', () => { sendSnap(); if (myRoom) socket.emit('room:join', myRoom, r => { if (!r.ok) { myRoom = null; toast('방이 사라졌어요'); if (!$('#home').classList.contains('hidden')) return; show('home'); } }); });
+  socket.on('connect', () => { sendSnap(); if (myRoom) socket.emit('room:join', myRoom, r => { if (r.ok && inPlaza) socket.emit('plaza:join'); if (!r.ok) { myRoom = null; toast('방이 사라졌어요'); if (!$('#home').classList.contains('hidden')) return; show('home'); } }); });
   // minigame results from the server, applied to the local save
   socket.on('apply', d => { if (!S) return; tickSim(); if (d.coins) S.coins += Math.max(0, Math.min(500, d.coins | 0));
     if (d.energy) S.pet.stats.energy = G.clamp(S.pet.stats.energy + Math.max(-100, Math.min(100, +d.energy || 0))); if (d.win) S.wins = (S.wins || 0) + 1; save(); renderHud(); });

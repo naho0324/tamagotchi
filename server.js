@@ -14,6 +14,7 @@ app.get('/health', (q, r) => r.json({ ok: true, online: io.engine.clientsCount, 
 const server = http.createServer(app), io = new Server(server, { transports: ['websocket'], perMessageDeflate: false });
 
 const MAX_ROOM = 6, CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // no 0/O, 1/I/L
+const ROOM_TTL = +process.env.ROOM_TTL_MS || 30 * 60 * 1000; // empty room lifetime
 const COST = { volley: 15, snake: 15 };
 const rooms = new Map(); // code -> room
 const matches = new Map(); // socketId -> match
@@ -49,7 +50,7 @@ function makeRoom() {
 function enterRoom(socket, room) {
   if (room.members.size >= MAX_ROOM) return `방이 가득 찼어요 (최대 ${MAX_ROOM}명)`;
   leaveRoom(socket);
-  socket.roomCode = room.code; socket.join('room:' + room.code);
+  clearTimeout(room.reap); socket.roomCode = room.code; socket.join('room:' + room.code);
   room.members.set(socket.id, { sid: socket.id, x: 100 + Math.random() * 280, y: 180 + Math.random() * 80, inPlaza: false, ...look(socket) });
   return null;
 }
@@ -58,7 +59,9 @@ function leaveRoom(socket) {
   room.raid.leave(socket.id); room.snake.leave(socket.id);
   if (room.queue && room.queue.socket.id === socket.id) room.queue = null;
   room.members.delete(socket.id); socket.leave('room:' + room.code); socket.roomCode = null;
-  if (!room.members.size) rooms.delete(room.code); // empty rooms disappear
+  // Keep empty rooms alive for a while: on phones the creator switches apps to share the code, the browser
+  // drops the socket, and deleting the room right then made every invite code dead on arrival.
+  if (!room.members.size) { clearTimeout(room.reap); room.reap = setTimeout(() => { if (!room.members.size) rooms.delete(room.code); }, ROOM_TTL); }
 }
 
 io.use((socket, next) => { const u = resolvePlayer(socket.handshake); if (!u) return next(new Error('auth')); socket.user = u; next(); });
