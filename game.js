@@ -39,7 +39,8 @@ function addCoins(player, n) { player.coins = Math.max(0, Math.min(coinCap(playe
 function priceOf(player, k) { const it = SHOP[k]; if (!it) return Infinity; return k === 'medicine' && player.pet && player.pet.char === 1 ? Math.ceil(it.price / 2) : it.price; }
 const ownKey = (player, type, key) => key === 'base' || (player.owned || []).includes(type + '_' + key);
 function migrate(player) { // old saves: hat/clothes items are gone -> refund; add hair/outfit (base)
-  player.owned = player.owned || []; let refund = 0;
+  player.owned = Array.isArray(player.owned) ? player.owned.filter(k => typeof k === 'string') : []; let refund = 0;
+  if (!player.inventory || typeof player.inventory !== 'object') player.inventory = { snack: 0, medicine: 0 };
   player.owned = player.owned.filter(k => { if (OLD_ITEMS[k]) { refund += OLD_ITEMS[k]; return false; } return !!SHOP[k]; });
   if (refund) addCoins(player, refund);
   if (!HAIRS.includes(player.hair) || !ownKey(player, 'hair', player.hair)) player.hair = 'base';
@@ -108,7 +109,8 @@ function act(player, action, arg, now) {
       const it = SHOP[arg]; if (!it) return '없는 상품'; const price = priceOf(player, arg); if (player.coins < price) return '코인이 부족해요';
       if (it.type !== 'consumable' && player.owned.includes(arg)) return '이미 가지고 있어요';
       player.coins -= price;
-      if (it.type === 'consumable') player.inventory[arg] = (player.inventory[arg] || 0) + 1; else player.owned.push(arg);
+      if (it.type === 'consumable') player.inventory[arg] = (player.inventory[arg] || 0) + 1; else { player.owned.push(arg); player[it.type] = it.key; // auto-wear what you just bought
+        return { msg: it.name + ' 구매 완료! 바로 입었어요' + (['egg', 'baby'].includes(p.stage) ? ' (어린이부터 보여요)' : '') }; }
       return { msg: it.name + ' 구매 완료!' };
     }
     case 'equip': { // arg: 'hair:pony' | 'outfit:base'

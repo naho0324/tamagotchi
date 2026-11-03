@@ -49,4 +49,4 @@ async def main():
         await A.screenshot(path='test/plaza_outfits.png')
         for pg in (A, B, C, O): assert not pg.errs, pg.errs
         await br.close(); print('outfit browser OK, room', code)
-asyncio.run(main())
+if __name__ == "__main__": asyncio.run(main())

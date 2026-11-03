@@ -13,7 +13,7 @@ function save() { if (S) localStorage.setItem(SAVE_KEY, JSON.stringify(S)); }
 function loadSave(ident) {
   let p = null; try { p = JSON.parse(localStorage.getItem(SAVE_KEY)); } catch {}
   if (!validSave(p)) p = G.newPlayer(ident.playerId, ident.nickname, Date.now());
-  p.id = ident.playerId; p.nickname = ident.nickname; return p;
+  G.migrate(p); p.id = ident.playerId; p.nickname = ident.nickname; return p;
 }
 function validSave(p) { return p && typeof p === 'object' && p.pet && p.pet.stats && typeof p.pet.stage === 'string' && Number.isFinite(p.coins); }
 function tickSim() { if (!S) return; G.update(S, Date.now());
@@ -123,7 +123,7 @@ function renderShop() {
     const price = G.priceOf(S, k);
     d.innerHTML = `<span>${wear ? icon(it.type, it.key) : ''}${it.name} <small>${wear ? (it.type === 'hair' ? '헤어' : '옷') + ' · ' : ''}🪙${price}${price < it.price ? ' (반값!)' : ''}</small></span>`;
     const b = document.createElement('button'); b.className = 'small';
-    if (wear && owned) { b.textContent = '보유중'; b.disabled = true; }
+    if (wear && owned) { const on = S[it.type] === it.key; b.textContent = on ? '착용중' : '입기'; b.disabled = on; if (!on) b.onclick = () => act('equip', it.type + ':' + it.key); }
     else { b.textContent = '구매'; b.onclick = () => act('buy', k); }
     d.appendChild(b); return d; };
   const h = t => { const e = document.createElement('h3'); e.textContent = t; return e; };
