@@ -41,6 +41,7 @@
     <div class="row"><input id="chat" maxlength="40" placeholder="말하기..."><button id="chat-send" class="small">전송</button></div>
     <div class="row"><button id="match" class="big b-pink">🏐 배구 매칭 <small>⚡15</small></button><button id="practice" class="big b-blue">🤖 연습 경기 <small>⚡15</small></button></div>
     <div class="row"><button id="snake-btn" class="big b-green">🐍 스네이크 (1~6명) <small>⚡15</small></button><button id="raid-btn" class="big b-purple">👑 보스 레이드 (1~6명) <small>⚡15~30</small></button></div>
+    <div class="row"><button id="m-memory" class="big b-pink">🃏 짝맞추기 (혼자) <small>⚡8</small></button><button id="m-pop" class="big b-green">💗 하트 팡팡 (혼자) <small>⚡8</small></button></div>
     <div id="match-status" class="hint">화면을 눌러 이동해요</div>
   </section>
   <!-- SNAKE -->
@@ -62,6 +63,11 @@
     <div class="row raid-act"><button id="r-atk" class="big b-pink">⭐ 공격</button><button id="r-skill" class="big b-blue">✨ 스킬</button></div>
     <div class="touch dpad rpad"><button data-d="l">◀</button><button data-d="u">▲</button><button data-d="d">▼</button><button data-d="r">▶</button></div>
     <div class="hint">이동: 방향키/WASD · 공격: J/스페이스 · 스킬: K · 그림자·레이저·개구리를 피하세요!</div>
+  </section>
+  <!-- MINI (single-player) -->
+  <section id="mini" class="screen hidden">
+    <div class="topbar"><button id="m-back" class="small">← 나가기</button><b id="m-title"></b><span id="m-info"></span></div>
+    <canvas id="mCv" width="480" height="300" class="hidden"></canvas>
   </section>
   <!-- VOLLEY -->
   <section id="volley" class="screen hidden">

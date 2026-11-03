@@ -100,6 +100,13 @@ io.on('connection', socket => {
     startMatch([{ socket, socketId: socket.id, look: look(socket) }, { socketId: null, look: { nickname: '연습봇', stage: 'child', char: 1 + Math.floor(Math.random() * 7), style: 3, wearing: {} } }], true); });
   socket.on('v:input', inp => { const m = matches.get(socket.id); if (m && inp) m.setInput(socket.id, inp); });
   socket.on('v:leave', () => { const m = matches.get(socket.id); if (m) m.leave(socket.id); });
+  // single-player minigames: server checks energy at start and time/score at end, then awards via apply()
+  socket.on('m:start', game => { const M = G.MINI[game]; if (!M) return; const e = canPlay(socket, M.energy); if (e) return socket.emit('m:denied', e);
+    socket.mini = { game, t: Date.now() }; apply(socket, { energy: -M.energy }); socket.emit('m:go', { game }); });
+  socket.on('m:end', d => { const m = socket.mini; socket.mini = null; if (!m || !d || d.game !== m.game) return; const M = G.MINI[m.game], dt = Date.now() - m.t;
+    let coins = dt >= M.minMs && dt <= M.maxMs ? G.miniCoins(m.game, d.score) : 0; if (coins) coins = apply(socket, { coins }).coins;
+    socket.emit('m:result', { game: m.game, score: Math.floor(+d.score) || 0, coins, energy: M.energy }); });
+  socket.on('m:quit', () => { socket.mini = null; });
   // snake + raid (one lobby each per room)
   const joinLobby = (lob, cost, kick) => { const r = need(); if (!r) return socket.emit(kick, '먼저 방에 들어가세요');
     const e = canPlay(socket, cost); if (e) { socket.emit('toast', e); return socket.emit(kick, e); }

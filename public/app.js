@@ -36,7 +36,7 @@ function start() {
   // minigame results from the server, applied to the local save
   socket.on('apply', d => { if (!S) return; tickSim(); if (d.coins) G.addCoins(S, Math.max(0, Math.min(750, d.coins | 0)));
     if (d.energy) S.pet.stats.energy = G.clamp(S.pet.stats.energy + Math.max(-100, Math.min(100, +d.energy || 0))); if (d.win) S.wins = (S.wins || 0) + 1; save(); renderHud(); });
-  bindSocket();
+  bindSocket(); miniBind();
 }
 $('#nick-ok').onclick = () => {
   const n = $('#nick').value.trim(); if (!n) return toast('닉네임을 입력해주세요');
@@ -443,7 +443,7 @@ function bindSocket() {
     $('#end-msg').textContent = `${d.score[0]} : ${d.score[1]}` + (d.forfeit ? ' (기권)' : '') + ` · +${d.reward || 0} 코인, 에너지 -${d.energy || 0}`;
     $('#end-modal').classList.remove('hidden'); });
 }
-$('#end-ok').onclick = () => { closeModal('end-modal'); if (!$('#snake').classList.contains('hidden') || !$('#raid').classList.contains('hidden')) { enterPlaza(); return; } if (inPlaza) { show('plaza'); $('#match-status').textContent = '화면을 눌러 이동해요'; } else show('home'); };
+$('#end-ok').onclick = () => { closeModal('end-modal'); if (!$('#mini').classList.contains('hidden')) return enterPlaza(); if (!$('#snake').classList.contains('hidden') || !$('#raid').classList.contains('hidden')) { enterPlaza(); return; } if (inPlaza) { show('plaza'); $('#match-status').textContent = '화면을 눌러 이동해요'; } else show('home'); };
 function loop(t) {
   if (!$('#home').classList.contains('hidden')) drawRoom(t);
   if (S && !$('#wardrobe-modal').classList.contains('hidden')) drawWardrobe(t);
@@ -454,3 +454,47 @@ function loop(t) {
   requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop); start();
+
+// ---- SINGLE-PLAYER MINIGAMES (v1.2): 짝맞추기 + 하트 팡팡 ----
+const mcv = $('#mCv'), mctx = mcv.getContext('2d'); mctx.imageSmoothingEnabled = false; let MG = null;
+function miniStart(game) { if (!S) return; tickSim(); const M = G.MINI[game];
+  if (S.pet.stage === 'dead') return toast('하늘나라에 간 펫은 놀 수 없어요'); if (S.pet.sleeping) return toast('자고 있어요 💤 깨운 뒤에 놀아요');
+  if (S.pet.sick) return toast('아파서 놀 수 없어요. 약을 먹여주세요'); if (S.pet.stats.energy < M.energy) return toast(`에너지가 부족해요 (필요: ${M.energy})`);
+  sendSnap(); socket.emit('m:start', game); }
+$('#m-memory').onclick = () => miniStart('memory'); $('#m-pop').onclick = () => miniStart('pop');
+$('#m-back').onclick = () => { if (MG) socket.emit('m:quit'); MG = null; enterPlaza(); };
+function miniBind() {
+  socket.on('m:denied', e => toast(e));
+  socket.on('m:go', ({ game }) => { socket.emit('plaza:leave'); show('mini'); mcv.classList.remove('hidden'); $('#m-info').textContent = ''; $('#m-title').textContent = G.MINI[game].name;
+    const t0 = performance.now();
+    if (game === 'memory') { const faces = [1, 2, 3, 4, 5, 6, 7, 0], deck = [...faces, ...faces];
+      for (let i = deck.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [deck[i], deck[j]] = [deck[j], deck[i]]; }
+      MG = { game, t0, cards: deck.map(f => ({ f, up: false, done: false })), open: [], moves: 0, lock: 0 }; }
+    else MG = { game, t0, hits: 0, holes: [], next: t0 + 400, end: t0 + 30000, pops: [] }; });
+  socket.on('m:result', r => { MG = null; $('#end-title').textContent = r.game === 'memory' ? '🃏 다 맞췄어요!' : '💗 시간 끝!';
+    $('#end-msg').textContent = (r.game === 'memory' ? `${r.score}번 뒤집기` : `하트 ${r.score}개`) + ` · +${r.coins} 코인, 에너지 -${r.energy}`; $('#end-modal').classList.remove('hidden'); });
+}
+const MC = { cols: 4, w: 96, h: 64, x0: 36, y0: 8, gx: 12, gy: 8 };
+const cardRect = i => ({ x: MC.x0 + (i % 4) * (MC.w + MC.gx), y: MC.y0 + Math.floor(i / 4) * (MC.h + MC.gy) });
+const HOLES = [...Array(9)].map((_, i) => ({ x: 100 + (i % 3) * 140, y: 70 + Math.floor(i / 3) * 85 }));
+mcv.addEventListener('pointerdown', e => { if (!MG) return; const b = mcv.getBoundingClientRect(), x = (e.clientX - b.left) * 480 / b.width, y = (e.clientY - b.top) * 300 / b.height, now = performance.now();
+  if (MG.game === 'memory') { if (MG.lock > now) return; const i = MG.cards.findIndex((c, k) => { const r = cardRect(k); return x >= r.x && x < r.x + MC.w && y >= r.y && y < r.y + MC.h; });
+    const c = MG.cards[i]; if (!c || c.up || c.done) return; c.up = true; MG.open.push(c);
+    if (MG.open.length === 2) { MG.moves++; const [a, d] = MG.open; MG.open = [];
+      if (a.f === d.f) { a.done = d.done = true; if (MG.cards.every(q => q.done)) { const m = MG; setTimeout(() => socket.emit('m:end', { game: 'memory', score: m.moves }), 500); } }
+      else { MG.lock = now + 700; setTimeout(() => { a.up = d.up = false; }, 700); } } }
+  else { const h = MG.holes.find(o => o.until > now && Math.hypot(x - HOLES[o.i].x, y - HOLES[o.i].y) < 40); if (h) { h.until = 0; MG.hits++; MG.pops.push({ x: HOLES[h.i].x, y: HOLES[h.i].y, t: now }); } } });
+function drawMini(t) { if (!MG || mcv.classList.contains('hidden')) return; const c = mctx; c.fillStyle = '#fff5f8'; c.fillRect(0, 0, 480, 300);
+  if (MG.game === 'memory') { $('#m-info').textContent = `뒤집기 ${MG.moves}`;
+    MG.cards.forEach((cd, i) => { const r = cardRect(i); c.fillStyle = '#1d2557'; c.fillRect(r.x - 2, r.y - 2, MC.w + 4, MC.h + 4);
+      if (cd.up || cd.done) { c.fillStyle = cd.done ? '#d8f5c8' : '#fff'; c.fillRect(r.x, r.y, MC.w, MC.h);
+        drawPet(c, r.x + MC.w / 2, r.y + MC.h - 4, 54, cd.f ? { char: cd.f, stage: 'child' } : { char: 1, stage: 'egg' }, t, { still: true }); }
+      else { c.fillStyle = '#f7a8b8'; c.fillRect(r.x, r.y, MC.w, MC.h); heart(c, r.x + MC.w / 2, r.y + MC.h / 2, 4, '#fff'); } }); }
+  else { const now = t, left = Math.max(0, MG.end - now); $('#m-info').textContent = `💗 ${MG.hits} · ${Math.ceil(left / 1000)}초`;
+    if (left <= 0) { const m = MG; MG = null; socket.emit('m:end', { game: 'pop', score: m.hits }); return; }
+    if (now > MG.next) { const free = [...Array(9).keys()].filter(i => !MG.holes.some(o => o.i === i && o.until > now)); const i = free[Math.floor(Math.random() * free.length)];
+      const life = 1100 - Math.min(500, (now - MG.t0) / 40); MG.holes.push({ i, until: now + life }); MG.next = now + 380 + Math.random() * 380; MG.holes = MG.holes.filter(o => o.until > now - 50); }
+    HOLES.forEach((h, i) => { c.fillStyle = '#1d2557'; c.fillRect(h.x - 42, h.y + 18, 84, 14); c.fillStyle = '#c9a3e8'; c.fillRect(h.x - 40, h.y + 20, 80, 10);
+      const o = MG.holes.find(q => q.i === i && q.until > now); if (o) { const k = Math.min(1, (o.until - now) / 150); heart(c, h.x, h.y - 4 * (1 - k), 8, '#1d2557'); heart(c, h.x, h.y - 4 * (1 - k), 6.5, '#ff4f8a'); } });
+    MG.pops = MG.pops.filter(p => now - p.t < 500); for (const p of MG.pops) { c.globalAlpha = 1 - (now - p.t) / 500; c.fillStyle = '#1d2557'; c.font = '20px Galmuri11, monospace'; c.fillText('+1', p.x - 10, p.y - 30 - (now - p.t) / 20); c.globalAlpha = 1; } } }
+(function miniLoop(t) { drawMini(t); requestAnimationFrame(miniLoop); })(performance.now());
