@@ -14,8 +14,9 @@ const SHOP = {
   outfit_hoodie: { name: '후드티', price: 90, type: 'outfit', key: 'hoodie' }, outfit_stripe: { name: '줄무늬티+청바지', price: 100, type: 'outfit', key: 'stripe' },
   outfit_dress: { name: '원피스', price: 120, type: 'outfit', key: 'dress' }, outfit_hanbok: { name: '한복', price: 180, type: 'outfit', key: 'hanbok' },
   outfit_space: { name: '우주복', price: 250, type: 'outfit', key: 'space' },
+  acc_crown: { name: '왕관', price: 300, type: 'acc', key: 'crown' },
 };
-const HAIRS = ['base', 'pony', 'bob', 'pigtail', 'afro'], OUTFITS = ['base', 'hoodie', 'stripe', 'dress', 'hanbok', 'space'];
+const HAIRS = ['base', 'pony', 'bob', 'pigtail', 'afro'], OUTFITS = ['base', 'hoodie', 'stripe', 'dress', 'hanbok', 'space'], ACCS = ['none', 'crown'];
 const OLD_ITEMS = { hat_ribbon: 40, hat_crown: 80, cloth_blue: 50, cloth_pink: 50 }; // removed items: refunded on migration
 // traits per character (default max is 100 for everything)
 const TRAITS = {
@@ -37,7 +38,7 @@ const raidAtkOf = c => traitOf(c).raidAtk || 1;
 const clamp = (v, mx = 100) => Math.max(0, Math.min(mx, v));
 function addCoins(player, n) { player.coins = Math.max(0, Math.min(coinCap(player.pet && player.pet.char), (player.coins || 0) + n)); return player.coins; }
 function priceOf(player, k) { const it = SHOP[k]; if (!it) return Infinity; return k === 'medicine' && player.pet && player.pet.char === 1 ? Math.ceil(it.price / 2) : it.price; }
-const ownKey = (player, type, key) => key === 'base' || (player.owned || []).includes(type + '_' + key);
+const ownKey = (player, type, key) => key === 'base' || key === 'none' || (player.owned || []).includes(type + '_' + key);
 function migrate(player) { // old saves: hat/clothes items are gone -> refund; add hair/outfit (base)
   player.owned = Array.isArray(player.owned) ? player.owned.filter(k => typeof k === 'string') : []; let refund = 0;
   if (!player.inventory || typeof player.inventory !== 'object') player.inventory = { snack: 0, medicine: 0 };
@@ -45,6 +46,7 @@ function migrate(player) { // old saves: hat/clothes items are gone -> refund; a
   if (refund) addCoins(player, refund);
   if (!HAIRS.includes(player.hair) || !ownKey(player, 'hair', player.hair)) player.hair = 'base';
   if (!OUTFITS.includes(player.outfit) || !ownKey(player, 'outfit', player.outfit)) player.outfit = 'base';
+  if (!ACCS.includes(player.acc) || !ownKey(player, 'acc', player.acc)) player.acc = 'none'; // v1.4: head accessory (머리장식)
   delete player.wearing; }
 const validChar = c => Number.isInteger(+c) && +c >= 1 && +c <= NCHAR;
 function newPet(now, char) {
@@ -53,7 +55,7 @@ function newPet(now, char) {
     careScore: 0, cooldowns: {} };
 }
 function newPlayer(id, nickname, now, char) {
-  const pl = { id, nickname, coins: 30, inventory: { snack: 1, medicine: 0 }, owned: [], hair: 'base', outfit: 'base', pet: newPet(now, char), wins: 0 };
+  const pl = { id, nickname, coins: 30, inventory: { snack: 1, medicine: 0 }, owned: [], hair: 'base', outfit: 'base', acc: 'none', pet: newPet(now, char), wins: 0 };
   if (pl.pet.char === 4) pl.coins *= 2; return pl;
 }
 function stepMinute(p, t) {
@@ -113,8 +115,8 @@ function act(player, action, arg, now) {
         return { msg: it.name + ' 구매 완료! 바로 입었어요' + (['egg', 'baby'].includes(p.stage) ? ' (어린이부터 보여요)' : '') }; }
       return { msg: it.name + ' 구매 완료!' };
     }
-    case 'equip': { // arg: 'hair:pony' | 'outfit:base'
-      const [type, key] = String(arg).split(':'); const list = type === 'hair' ? HAIRS : type === 'outfit' ? OUTFITS : null;
+    case 'equip': { // arg: 'hair:pony' | 'outfit:base' | 'acc:crown' | 'acc:none'
+      const [type, key] = String(arg).split(':'); const list = type === 'hair' ? HAIRS : type === 'outfit' ? OUTFITS : type === 'acc' ? ACCS : null;
       if (!list || !list.includes(key)) return '착용할 수 없어요'; if (!ownKey(player, type, key)) return '먼저 구매하세요';
       player[type] = key; return { msg: '갈아입었어요!' };
     }
@@ -122,7 +124,7 @@ function act(player, action, arg, now) {
   }
   return '알 수 없는 행동';
 }
-function publicPet(pl) { return { nickname: pl.nickname, stage: pl.pet.stage, char: pl.pet.char, style: pl.pet.style, hair: pl.hair, outfit: pl.outfit, sick: pl.pet.sick, sleeping: pl.pet.sleeping }; }
+function publicPet(pl) { return { nickname: pl.nickname, stage: pl.pet.stage, char: pl.pet.char, style: pl.pet.style, hair: pl.hair, outfit: pl.outfit, acc: pl.acc || 'none', sick: pl.pet.sick, sleeping: pl.pet.sleeping }; }
 const POWER = { egg: 0.5, baby: 1, child: 1.5, adult: 2.2 }; // raid damage multiplier by growth stage
 const STAGES = ['egg', 'baby', 'child', 'adult', 'dead'];
 // Light sanity check of a client-sent pet snapshot (cheating is accepted; this only keeps values in range).
@@ -130,15 +132,15 @@ function sanitizeSnap(s, nickname) {
   s = s && typeof s === 'object' ? s : {}; const st = s.stats || {}, char = validChar(s.char) ? +s.char : 1, num = (v, k) => clamp(Number.isFinite(+v) ? +v : 0, maxOf(char, k));
   return { nickname: String(nickname || s.nickname || '손님').slice(0, 12), char, stage: STAGES.includes(s.stage) ? s.stage : 'egg',
     stats: { hunger: num(st.hunger, 'hunger'), happy: num(st.happy, 'happy'), energy: num(st.energy, 'energy'), clean: num(st.clean, 'clean') }, sick: !!s.sick, sleeping: !!s.sleeping,
-    hair: HAIRS.includes(s.hair) ? s.hair : 'base', outfit: OUTFITS.includes(s.outfit) ? s.outfit : 'base' };
+    hair: HAIRS.includes(s.hair) ? s.hair : 'base', outfit: OUTFITS.includes(s.outfit) ? s.outfit : 'base', acc: ACCS.includes(s.acc) ? s.acc : 'none' };
 }
-function snapOf(player) { const p = player.pet; return { nickname: player.nickname, char: p.char, stage: p.stage, stats: { ...p.stats }, sick: p.sick, sleeping: p.sleeping, hair: player.hair || 'base', outfit: player.outfit || 'base' }; }
+function snapOf(player) { const p = player.pet; return { nickname: player.nickname, char: p.char, stage: p.stage, stats: { ...p.stats }, sick: p.sick, sleeping: p.sleeping, hair: player.hair || 'base', outfit: player.outfit || 'base', acc: player.acc || 'none' }; }
 // single-player minigames (v1.2): cheap energy, modest coins; server validates time + score range
 const MINI = { memory: { name: '짝맞추기', energy: 8, minMs: 6000, maxMs: 600000 }, pop: { name: '하트 팡팡', energy: 8, minMs: 29000, maxMs: 120000, maxScore: 90 } };
 function miniCoins(game, score) { score = Math.floor(+score);
   if (game === 'memory') return score >= 8 && score <= 200 ? Math.max(10, Math.min(25, 25 - (score - 8))) : 0; // score = moves (8 = perfect)
   if (game === 'pop') return score >= 0 && score <= MINI.pop.maxScore ? (score < 5 ? 5 : Math.min(25, 10 + Math.floor((score - 5) / 3))) : 0; // score = hearts tapped
   return 0; }
-const api = { MINI, miniCoins, NCHAR, MIN, newPlayer, newPet, update, act, SHOP, CFG, POWER, publicPet, sanitizeSnap, snapOf, clamp, HAIRS, OUTFITS, TRAITS, COIN_CAP, maxOf, coinCap, raidHpOf, raidAtkOf, addCoins, priceOf, migrate, ownKey };
+const api = { MINI, miniCoins, NCHAR, MIN, newPlayer, newPet, update, act, SHOP, CFG, POWER, publicPet, sanitizeSnap, snapOf, clamp, HAIRS, OUTFITS, ACCS, TRAITS, COIN_CAP, maxOf, coinCap, raidHpOf, raidAtkOf, addCoins, priceOf, migrate, ownKey };
 if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.Game = api;
 })(typeof window !== 'undefined' ? window : globalThis);

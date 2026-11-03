@@ -67,7 +67,7 @@ let fx = [];
 function drawRoom(t) {
   rctx.drawImage(BG, 0, 0, 480, 270);
   if (S) {
-    const look = { ...S.pet, hair: S.hair, outfit: S.outfit };
+    const look = { ...S.pet, hair: S.hair, outfit: S.outfit, acc: S.acc };
     drawPet(rctx, 240, 238, S.pet.stage === 'egg' ? 120 : S.pet.stage === 'baby' ? 70 : S.pet.stage === 'child' ? 105 : 130, look, t);
     if (S.pet.sleeping) { rctx.fillStyle = 'rgba(29,37,87,.25)'; rctx.fillRect(0, 0, 480, 270); }
   }
@@ -116,12 +116,12 @@ document.querySelectorAll('.buttons button').forEach(b => b.onclick = () => {
   else act(a);
 });
 roomCv.onclick = () => { if (S && S.pet.stage === 'dead') act('restart'); };
-const icon = (type, key) => `<img class="ico" src="assets/outfits/${S.pet.char}/${S.pet.stage === 'adult' ? 'adult' : 'child'}/${type === 'hair' ? key + '_base' : 'base_' + key}.png" alt="">`;
+const icon = (type, key) => `<img class="ico" src="assets/outfits/${S.pet.char}/${S.pet.stage === 'adult' ? 'adult' : 'child'}/${type === 'hair' ? key + '_base' : type === 'acc' ? (key === 'none' ? 'base_base' : 'base_base_' + key) : 'base_' + key}.png" alt="">`;
 function renderShop() {
   const sl = $('#shop-list'); sl.innerHTML = '';
   const row = (k, it) => { const owned = S.owned.includes(k), d = document.createElement('div'), wear = it.type !== 'consumable'; d.className = 'item';
     const price = G.priceOf(S, k);
-    d.innerHTML = `<span>${wear ? icon(it.type, it.key) : ''}${it.name} <small>${wear ? (it.type === 'hair' ? '헤어' : '옷') + ' · ' : ''}🪙${price}${price < it.price ? ' (반값!)' : ''}</small></span>`;
+    d.innerHTML = `<span>${wear ? icon(it.type, it.key) : ''}${it.name} <small>${wear ? ({ hair: '헤어', outfit: '옷', acc: '머리장식' }[it.type]) + ' · ' : ''}🪙${price}${price < it.price ? ' (반값!)' : ''}</small></span>`;
     const b = document.createElement('button'); b.className = 'small';
     if (wear && owned) { const on = S[it.type] === it.key; b.textContent = on ? '착용중' : '입기'; b.disabled = on; if (!on) b.onclick = () => act('equip', it.type + ':' + it.key); }
     else { b.textContent = '구매'; b.onclick = () => act('buy', k); }
@@ -133,27 +133,29 @@ function renderShop() {
   for (const [k, it] of Object.entries(G.SHOP)) if (it.type === 'hair') sl.appendChild(row(k, it));
   sl.appendChild(h('옷 👗'));
   for (const [k, it] of Object.entries(G.SHOP)) if (it.type === 'outfit') sl.appendChild(row(k, it));
+  sl.appendChild(h('머리장식 👑'));
+  for (const [k, it] of Object.entries(G.SHOP)) if (it.type === 'acc') sl.appendChild(row(k, it));
   const il = $('#inv-list'); il.innerHTML = '';
   for (const k of ['snack', 'medicine']) { const d = document.createElement('div'); d.className = 'item'; d.innerHTML = `<span>${G.SHOP[k].name} x${S.inventory[k] || 0}</span>`;
     const b = document.createElement('button'); b.className = 'small'; b.textContent = '사용'; b.onclick = () => act('use', k); d.appendChild(b); il.appendChild(d); }
 }
 // ---- WARDROBE (꾸미기): 헤어/옷 tabs, live preview ----
 let wTab = 'hair'; const wcv = $('#wPreview'), wctx = wcv.getContext('2d');
-const BASE_KO = { hair: '기본 머리', outfit: '기본 옷' };
+const BASE_KO = { hair: '기본 머리', outfit: '기본 옷', acc: '없음' };
 function openWardrobe() { renderWardrobe(); $('#wardrobe-modal').classList.remove('hidden'); }
 function renderWardrobe() {
   const tabs = $('#w-tabs'); tabs.innerHTML = '';
-  for (const [t, ko] of [['hair', '헤어'], ['outfit', '옷']]) { const b = document.createElement('button'); b.className = 'small' + (t === wTab ? ' sel' : ''); b.textContent = ko; b.dataset.tab = t; b.onclick = () => { wTab = t; renderWardrobe(); }; tabs.appendChild(b); }
+  for (const [t, ko] of [['hair', '헤어'], ['outfit', '옷'], ['acc', '머리장식']]) { const b = document.createElement('button'); b.className = 'small' + (t === wTab ? ' sel' : ''); b.textContent = ko; b.dataset.tab = t; b.onclick = () => { wTab = t; renderWardrobe(); }; tabs.appendChild(b); }
   const list = $('#w-list'); list.innerHTML = '';
-  const keys = (wTab === 'hair' ? G.HAIRS : G.OUTFITS).filter(k => G.ownKey(S, wTab, k));
+  const keys = ({ hair: G.HAIRS, outfit: G.OUTFITS, acc: G.ACCS }[wTab]).filter(k => G.ownKey(S, wTab, k));
   for (const k of keys) { const on = S[wTab] === k, b = document.createElement('button'); b.className = 'w-item' + (on ? ' on' : ''); b.dataset.item = wTab + ':' + k;
-    b.innerHTML = `${icon(wTab, k)}<small>${k === 'base' ? BASE_KO[wTab] : G.SHOP[wTab + '_' + k].name}</small><em>${on ? '착용중' : ''}</em>`; b.onclick = () => act('equip', wTab + ':' + k); list.appendChild(b); }
+    b.innerHTML = `${icon(wTab, k)}<small>${k === 'base' || k === 'none' ? BASE_KO[wTab] : G.SHOP[wTab + '_' + k].name}</small><em>${on ? '착용중' : ''}</em>`; b.onclick = () => act('equip', wTab + ':' + k); list.appendChild(b); }
   if (keys.length < 2) list.insertAdjacentHTML('beforeend', '<p class="hint">상점에서 더 사보세요!</p>');
   $('#w-note').textContent = ['egg', 'baby'].includes(S.pet.stage) ? '어린이가 되면 옷을 입어요 (미리보기)' : S.pet.stage === 'dead' ? '' : '눌러서 갈아입기';
 }
 function drawWardrobe(t) { const c = wctx; c.fillStyle = '#fff5f8'; c.fillRect(0, 0, wcv.width, wcv.height); c.fillStyle = '#fbe3ea'; c.fillRect(0, wcv.height - 26, wcv.width, 26);
   const stage = ['child', 'adult'].includes(S.pet.stage) ? S.pet.stage : 'child';
-  drawPet(c, wcv.width / 2, wcv.height - 14, stage === 'adult' ? 200 : 150, { ...S.pet, stage, sick: false, sleeping: false, hair: S.hair, outfit: S.outfit }, t, { still: true }); }
+  drawPet(c, wcv.width / 2, wcv.height - 14, stage === 'adult' ? 200 : 150, { ...S.pet, stage, sick: false, sleeping: false, hair: S.hair, outfit: S.outfit, acc: S.acc }, t, { still: true }); }
 // ---- PLAZA ----
 const pcv = $('#plazaCv'), pctx = pcv.getContext('2d'); pctx.imageSmoothingEnabled = false;
 let plazaMeta = {}, plazaList = [], plazaDisp = {}, me = { x: 240, y: 220, tx: 240, ty: 220 }, inPlaza = false, lastMove = 0;

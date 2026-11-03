@@ -36,7 +36,7 @@ function canPlay(s, cost) {
   if (p.stats.energy < cost) return `에너지가 부족해요 (필요: ${cost})`;
   return null;
 }
-const look = s => { const p = s.snap; return { nickname: p.nickname, stage: p.stage, char: p.char, style: 0, hair: p.hair, outfit: p.outfit, sick: p.sick, sleeping: p.sleeping }; };
+const look = s => { const p = s.snap; return { nickname: p.nickname, stage: p.stage, char: p.char, style: 0, hair: p.hair, outfit: p.outfit, acc: p.acc, sick: p.sick, sleeping: p.sleeping }; };
 
 function makeRoom() {
   const code = newCode(), room = { code, members: new Map(), queue: null };
