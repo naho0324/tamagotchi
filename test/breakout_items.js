@@ -24,7 +24,24 @@ L.hit(0); L.step(); ok(L.cleared === 1 && L.level === 2, 'level clears with only
 // multi-hit
 L.bricks[1] = 3; L.hit(1); L.hit(1); ok(L.bricks[1] === 1, '3-hit brick shows remaining hp'); L.hit(1); ok(L.bricks[1] === 0, 'breaks on 3rd hit');
 // drops: rand < 0.13 drops
-L = game(1, () => 0.05); L.bricks[0] = 1; L.hit(0); ok(L.items.length === 1, 'broken brick drops item at low roll');
+L = game(1, () => 0.05); L.bricks[0] = 1; L.hit(0); ok(L.items.length === 2, 'low roll drops (a pair when the double roll hits too)');
+// v1.3.2 rates, statistically (seeded): drop ~25%, ~1.2 items per drop, debuffs 40-45%, +1 life rare
+{ const { WEIGHTS, DROP, DOUBLE, pickItem } = require('../breakout'); let sd = 7; const rnd = () => { let t = sd += 0x6D2B79F5; t = Math.imul(t ^ t >>> 15, t | 1); t ^= t + Math.imul(t ^ t >>> 7, t | 61); return ((t ^ t >>> 14) >>> 0) / 4294967296; }; // mulberry32
+  const N = 40000, bad = ['shrink', 'fast', 'rev', 'blink'], cnt = {}; let drops = 0, items = 0; L = game(1, rnd);
+  for (let i = 0; i < N; i++) { L.items = []; L.bricks[0] = 1; L.hit(0); if (L.items.length) drops++; items += L.items.length; for (const it of L.items) cnt[it.kind] = (cnt[it.kind] || 0) + 1; }
+  const f = k => (cnt[k] || 0) / items, debuff = bad.reduce((a, k) => a + f(k), 0);
+  console.log(`  drop ${(drops / N * 100).toFixed(1)}%  items/brick ${(items / N).toFixed(3)}  debuffs ${(debuff * 100).toFixed(1)}%  life ${(f('life') * 100).toFixed(1)}%`, Object.fromEntries(Object.keys(cnt).map(k => [k, (f(k) * 100).toFixed(1) + '%'])));
+  ok(DROP === 0.25 && Math.abs(drops / N - 0.25) < 0.01, 'drop rate ~25%'); ok(Math.abs(items / drops - (1 + DOUBLE)) < 0.02, 'sometimes 2 items at once (~20% of drops)');
+  ok(debuff > 0.40 && debuff < 0.45, 'debuffs 40-45% of items'); ok(f('life') < 0.07 && WEIGHTS.every(([k, w]) => k === 'life' || w > 2), '+1 life is the rarest');
+  ok(WEIGHTS.every(([k]) => f(k) > 0.03), 'every item kind actually drops'); ok(pickItem(0) === 'wide' && pickItem(0.9999) === 'blink', 'pickItem covers the full range'); }
+// several items falling at once are each catchable
+L = game(); { const p = L.paddles[0]; L.items.push({ x: p.x - 9, y: 280, kind: 'wide' }, { x: p.x + 9, y: 280, kind: 'laser' }, { x: p.x, y: 250, kind: 'rev' }); for (let i = 0; i < 30; i++) L.step();
+  ok(p.fx.wide > 0 && p.fx.laser > 0 && p.fx.rev > 0 && !L.items.length, 'multiple falling items all caught'); }
+// new debuffs: reverse (per paddle, 6s) and blink (shared, 6s), both sent in state
+L = game(2); { const [a, b] = L.paddles; L.items.push({ x: a.x, y: 285, kind: 'rev' }, { x: b.x, y: 285, kind: 'blink' }); for (let i = 0; i < 6; i++) L.step();
+  const st = ev.filter(e => e[0] === 'bk:state').pop()[1]; ok(a.fx.rev > 0 && !b.fx.rev && st.p[0][7] === 6 && st.p[1][7] === 0, 'rev: only catcher, 6s in state p[7]');
+  ok(L.fx.blink > 0 && st.fx[2] === 6, 'blink: shared 6s in state fx[2]'); for (let i = 0; i < 185; i++) { L.step(); L.balls.forEach(q => { q.y = 200; q.vy = -Math.abs(q.vy); }); } ok(!a.fx.rev && !L.fx.blink, 'rev/blink wear off'); }
+{ const src = require('fs').readFileSync(__dirname + '/../public/app.js', 'utf8'); ok(/x = p\.lo \+ p\.hi - x/.test(src) && /bkRev\(\) \? -bkHold/.test(src) && /hide && !w/.test(src) && /rev: \[/.test(src) && /blink: \[/.test(src), 'client: mirrored pointer/keys, blinking ball, new icons'); }
 L = game(1, () => 0.5); L.bricks[0] = 1; L.hit(0); ok(L.items.length === 0, 'no drop at high roll');
 // catch each item
 const catchIt = (L, kind) => { const p = L.paddles[0]; L.items.push({ x: p.x, y: 280, kind }); for (let i = 0; i < 12; i++) L.step(); };

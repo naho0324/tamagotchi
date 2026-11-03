@@ -7,10 +7,11 @@ const COLORS = ['#f27a9a', '#6aa9f2'];
 // Stage N (1..LEVELS) picks a random map from difficulty band N (4 maps each), so early stages never get hard maps.
 const { MAPS, KIND, difficulty } = require('./breakout_maps');
 const mapFor = (level, r) => { const n = MAPS.length, lo = Math.floor((level - 1) * n / LEVELS), hi = Math.floor(level * n / LEVELS); return lo + Math.floor(r * (hi - lo)); };
-const STEEL = 9, FX = 300, DROP = +process.env.BK_DROP || 0.13, MAXBALLS = 6, MAXLIVES = 5;
-const ITEMS = { wide: '패들 확장!', multi: '멀티볼 ×3!', slow: '느린 공~', laser: '레이저 발사!', life: '+1 목숨!', shrink: '패들 축소…', fast: '빠른 공!' };
-const WEIGHTS = [['wide', 3], ['multi', 3], ['slow', 2], ['laser', 2], ['life', 1], ['shrink', 2], ['fast', 2]];
-const pickItem = r => { let x = r * 15; for (const [k, w] of WEIGHTS) { if ((x -= w) < 0) return k; } return 'wide'; };
+const STEEL = 9, FX = 300, DROP = +process.env.BK_DROP || 0.25, DOUBLE = 0.2, SHORT = 180, MAXBALLS = 6, MAXLIVES = 5;
+const ITEMS = { wide: '패들 확장!', multi: '멀티볼 ×3!', slow: '느린 공~', laser: '레이저 발사!', life: '+1 목숨!', shrink: '패들 축소…', fast: '빠른 공!', rev: '발판 반대로!?', blink: '공 깜빡깜빡…' };
+// v1.3.2: good 23/40 (life rare, 5%), debuffs 17/40 = 42.5%
+const WEIGHTS = [['wide', 6], ['multi', 6], ['slow', 4], ['laser', 5], ['life', 2], ['shrink', 6], ['fast', 5], ['rev', 3], ['blink', 3]], WSUM = WEIGHTS.reduce((a, w) => a + w[1], 0);
+const pickItem = r => { let x = r * WSUM; for (const [k, w] of WEIGHTS) { if ((x -= w) < 0) return k; } return 'wide'; };
 // coins by STAGES CLEARED only: 0 -> 3, +3 per stage, 50 stages -> 150 (bricks broken don't matter)
 const coinsFor = stages => Math.min(150, 3 + 3 * Math.max(0, Math.floor(stages) || 0));
 class BreakoutLobby {
@@ -48,8 +49,8 @@ class BreakoutLobby {
     this.paid = ENERGY; if (this.charge) this.charge(this.players, ENERGY);
     const n = this.players.length, pw = n === 1 ? 84 : 72;
     this.paddles = this.players.map((p, i) => { const lo = n === 1 ? 0 : i * W / 2, hi = n === 1 ? W : lo + W / 2;
-      return { sid: p.sid, color: p.color, nickname: p.look.nickname, x: (lo + hi) / 2, tx: (lo + hi) / 2, w: pw, bw: pw, lo, hi, fx: { wide: 0, shrink: 0, laser: 0 }, cd: 0 }; });
-    this.rand = this.rand || Math.random; this.fx = { slow: 0, fast: 0 };
+      return { sid: p.sid, color: p.color, nickname: p.look.nickname, x: (lo + hi) / 2, tx: (lo + hi) / 2, w: pw, bw: pw, lo, hi, fx: { wide: 0, shrink: 0, laser: 0, rev: 0 }, cd: 0 }; });
+    this.rand = this.rand || Math.random; this.fx = { slow: 0, fast: 0, blink: 0 };
     this.state = 'playing'; this.ticks = 0; this.level = Math.min(LEVELS, +process.env.BK_LEVEL || 1); /* BK_LEVEL: preview/screenshot only */ this.broken = 0; this.cleared = 0; this.lives = LIVES;
     this.newLevel(); this.emitLobby();
     this.io.to(this.room).emit('bk:start', { w: W, h: H, tick: TICK,  geo: { COLS, ROWS, BW, BH, BX, BY, GAP, PY, PH, R }, paddles: this.paddles.map(({ sid, color, nickname, w, lo, hi }) => ({ sid, color, nickname, w, lo, hi })),
@@ -64,10 +65,12 @@ class BreakoutLobby {
   serve(p) { const sp = this.speed(), a = (Math.random() * 0.8 - 0.4); return { x: p.x, y: PY - R - 1, vx: sp * Math.sin(a), vy: -sp * Math.cos(a), sp, owner: p.sid, wait: 20 }; }
   input(sid, x) { const p = this.paddles && this.paddles.find(q => q.sid === sid); if (!p || !Number.isFinite(+x)) return; p.tx = Math.max(p.lo + p.w / 2, Math.min(p.hi - p.w / 2, +x)); }
   hit(i) { const v = this.bricks[i]; if (!v || v === STEEL) return; this.bricks[i] = v - 1; this.lastBreak = this.ticks; if (v > 1) return; this.broken++;
-    if (this.rand() < DROP) this.items.push({ x: BX + (i % COLS) * BW + BW / 2, y: BY + Math.floor(i / COLS) * BH + BH / 2, kind: pickItem(this.rand()) }); }
+    if (this.rand() < DROP) { const x = BX + (i % COLS) * BW + BW / 2, y = BY + Math.floor(i / COLS) * BH + BH / 2, two = this.rand() < DOUBLE; // sometimes a pair falls
+      for (const dx of two ? [-9, 9] : [0]) this.items.push({ x: x + dx, y, kind: pickItem(this.rand()) }); } }
   catchItem(it, p) { const k = it.kind, f = p.fx; this.io.to(this.room).emit('bk:item', { kind: k, label: ITEMS[k], sid: p.sid });
     if (k === 'wide') { f.wide = FX; f.shrink = 0; } else if (k === 'shrink') { f.shrink = FX; f.wide = 0; } else if (k === 'laser') f.laser = FX;
     else if (k === 'slow') { this.fx.slow = FX; this.fx.fast = 0; } else if (k === 'fast') { this.fx.fast = FX; this.fx.slow = 0; }
+    else if (k === 'rev') f.rev = SHORT; else if (k === 'blink') this.fx.blink = SHORT;
     else if (k === 'life') this.lives = Math.min(MAXLIVES, this.lives + 1);
     else if (k === 'multi') { for (const b of this.balls.slice()) for (const a of [-0.5, 0.5]) { if (this.balls.length >= MAXBALLS) break; if (b.wait > 0) continue;
       const c = Math.cos(a), s = Math.sin(a); this.balls.push({ ...b, vx: b.vx * c - b.vy * s, vy: Math.min(-1, b.vx * s + b.vy * c) }); } } }
@@ -126,8 +129,8 @@ class BreakoutLobby {
     if (this.bricks.every(v => !v || v === STEEL)) { this.cleared++; if (this.level >= LEVELS) return this.end(); this.level++; this.newLevel(); this.io.to(this.room).emit('bk:level', this.level); }
     const left = Math.floor(this.ticks * TICK / 1000); // elapsed seconds; no overall time limit (ends when lives run out)
     this.io.to(this.room).emit('bk:state', { t: left, lv: this.level, lives: this.lives, br: this.broken, k: this.bricks,
-      b: this.balls.map(b => [Math.round(b.x * 10) / 10, Math.round(b.y * 10) / 10, b.vx, b.vy, b.wait]), p: this.paddles.map(p => [p.sid, Math.round(p.x), p.gone ? 1 : 0, p.w, Math.ceil(p.fx.wide / 30), Math.ceil(p.fx.shrink / 30), Math.ceil(p.fx.laser / 30)]),
-      it: this.items.map(i => [Math.round(i.x), Math.round(i.y), i.kind]), sh: this.shots.map(s => [Math.round(s.x), Math.round(s.y)]), fx: [Math.ceil(this.fx.slow / 30), Math.ceil(this.fx.fast / 30)] });
+      b: this.balls.map(b => [Math.round(b.x * 10) / 10, Math.round(b.y * 10) / 10, b.vx, b.vy, b.wait]), p: this.paddles.map(p => [p.sid, Math.round(p.x), p.gone ? 1 : 0, p.w, Math.ceil(p.fx.wide / 30), Math.ceil(p.fx.shrink / 30), Math.ceil(p.fx.laser / 30), Math.ceil(p.fx.rev / 30)]),
+      it: this.items.map(i => [Math.round(i.x), Math.round(i.y), i.kind]), sh: this.shots.map(s => [Math.round(s.x), Math.round(s.y)]), fx: [Math.ceil(this.fx.slow / 30), Math.ceil(this.fx.fast / 30), Math.ceil(this.fx.blink / 30)] });
     if (this.lives <= 0 || !this.balls.length) this.end();
   }
   end() {
@@ -139,4 +142,4 @@ class BreakoutLobby {
     this.players = []; this.paddles = null; this.balls = null; this.state = 'lobby'; this.emitLobby();
   }
 }
-module.exports = { BreakoutLobby, coinsFor, ENERGY, W, H, MAPS, KIND, difficulty, mapFor, ITEMS, STEEL };
+module.exports = { WEIGHTS, DROP, DOUBLE, pickItem, BreakoutLobby, coinsFor, ENERGY, W, H, MAPS, KIND, difficulty, mapFor, ITEMS, STEEL };
