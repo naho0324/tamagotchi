@@ -106,7 +106,7 @@ class BreakoutLobby {
       for (let s = 0, k = Math.ceil(b.sp / 5); s < k; s++) { // sub-steps: no tunnelling through 14px bricks at high speed
       const px = b.x, py = b.y; b.x += b.vx / k; b.y += b.vy / k;
       if (b.x < R) { b.x = R; b.vx = Math.abs(b.vx); } if (b.x > W - R) { b.x = W - R; b.vx = -Math.abs(b.vx); } if (b.y < R) { b.y = R; b.vy = Math.abs(b.vy); }
-      if (b.vy > 0 && py + R <= PY && b.y + R >= PY) for (const p of this.paddles) { if (p.gone || Math.abs(b.x - p.x) > p.w / 2 + R) continue;
+      if (b.vy > 0 && py + R <= PY && b.y + R >= PY) for (const p of this.paddles) { if (p.gone || Math.abs(b.x - p.x) > p.w / 2 + 2 + R) continue; // collider = drawn paddle incl. its 2px outline, touching the ball's edge
         const off = (b.x - p.x) / (p.w / 2), stall = this.ticks - (this.lastBreak || 0) > 450, // anti-loop: small jitter, bigger after 15s without a break
           a = Math.max(-1.1, Math.min(1.1, Math.max(-1, Math.min(1, off)) * 1.05 + (this.rand() - 0.5) * (stall ? 0.5 : 0.1))); b.vx = b.sp * Math.sin(a); b.vy = -b.sp * Math.cos(a); b.y = PY - R; b.owner = p.sid; b.air = 0; break; }
       // bricks: one hit per sub-step

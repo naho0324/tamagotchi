@@ -506,7 +506,9 @@ $('#bk-btn').onclick = () => { socket.emit('plaza:leave'); socket.emit('v:cancel
 $('#bk-back').onclick = () => { socket.emit('bk:leave'); BK = null; enterPlaza(); };
 $('#bk-start').onclick = () => socket.emit('bk:start');
 function bkMine() { return BK && BK.paddles.find(p => p.sid === socket.id); }
-function bkAim(x) { const p = bkMine(); if (!p) return; BK.tx = Math.max(p.lo + p.w / 2, Math.min(p.hi - p.w / 2, x)); if (performance.now() - (BK.sent || 0) > 30) { BK.sent = performance.now(); socket.emit('bk:x', BK.tx); } }
+function bkAim(x) { const p = bkMine(); if (!p) return; BK.tx = Math.max(p.lo + p.w / 2, Math.min(p.hi - p.w / 2, x)); bkSend(); }
+// send the target (throttled ~30ms) and ALWAYS the final one: the old throttle dropped the last move, so the server paddle stopped short of the drawn one
+function bkSend(force) { if (!BK || BK.tx === BK.lastTx) return; const now = performance.now(); if (!force && now - (BK.sent || 0) < 30) return; BK.sent = now; BK.lastTx = BK.tx; socket.emit('bk:x', BK.tx); }
 const bkPtr = e => { if (!BK) return; const r = bkcv.getBoundingClientRect(); bkAim((e.clientX - r.left) * 480 / r.width); };
 bkcv.addEventListener('pointerdown', bkPtr); bkcv.addEventListener('pointermove', e => { if (e.buttons || e.pointerType !== 'mouse') bkPtr(e); });
 let bkHold = 0; const bkKeys = { ArrowLeft: -1, a: -1, A: -1, ArrowRight: 1, d: 1, D: 1 };
@@ -521,7 +523,7 @@ function bkLobby(l) { const pl = $('#bk-players'); pl.innerHTML = '';
 function bkBind() {
   socket.on('bk:lobby', l => { if (!$('#breakout').classList.contains('hidden')) bkLobby(l); });
   socket.on('bk:kicked', kickedToPlaza);
-  socket.on('bk:start', d => { BK = { ...d, cur: null, tAt: 0, sent: 0, pops: [] }; const me = bkMine(); BK.px = BK.tx = me ? (me.lo + me.hi) / 2 : 240;
+  socket.on('bk:start', d => { BK = { ...d, cur: null, tAt: 0, sent: 0, pops: [] }; const me = bkMine(); BK.tx = me ? (me.lo + me.hi) / 2 : 240;
     $('#bk-lobby').classList.add('hidden'); bkcv.classList.remove('hidden'); });
   socket.on('bk:level', lv => { toast(`${lv}단계! 더 어려워져요 🧱`); });
   socket.on('bk:item', d => { if (!BK) return; const p = BK.cur && BK.cur.p.find(q => q[0] === d.sid); BK.pops.push({ text: d.label, kind: d.kind, x: p ? p[1] : 240, t: performance.now() }); });
@@ -531,11 +533,15 @@ function bkBind() {
     $('#end-msg').textContent = `${res.map(r => r.nickname).join(' + ')} · 벽돌 ${me.bricks}개${me.levels ? ` · ${me.levels}단계 클리어` : ''} · +${me.coins} 코인, 에너지 -${me.energy}`;
     $('#end-modal').classList.remove('hidden'); });
 }
+// own paddle is drawn where the SERVER paddle is (its collider), moved at most one server step toward our target.
+// The old code drew a separate local prediction (7px per frame, frame-rate dependent) that ran ahead of / away from the real collider.
+function bkDrawX(p, sx, t) { const k = Math.min(1, (t - BK.tAt) / BK.tick), step = 14 * k, d = Math.max(-step, Math.min(step, BK.tx - sx));
+  return Math.max(p.lo + p.w / 2, Math.min(p.hi - p.w / 2, sx + d)); }
 function drawBreakout(t) { if (!BK || bkcv.classList.contains('hidden')) return; const c = bkctx, g = BK.geo, st = BK.cur;
   c.fillStyle = '#fff5f8'; c.fillRect(0, 0, 480, 320); c.fillStyle = '#fbe3ea'; for (let y = 0; y < 320; y += 16) for (let x = (y / 16) % 2 * 16; x < 480; x += 32) c.fillRect(x, y, 16, 16);
   if (BK.paddles.length > 1) { c.fillStyle = 'rgba(29,37,87,.12)'; for (let y = 200; y < 320; y += 8) c.fillRect(239, y, 2, 4); }
-  const me = bkMine(); if (me) { if (bkHold) { BK.tx = Math.max(me.lo + me.w / 2, Math.min(me.hi - me.w / 2, BK.tx + bkHold * 7)); if (t - (BK.sent || 0) > 30) { BK.sent = t; socket.emit('bk:x', BK.tx); } }
-    const d = BK.tx - BK.px; BK.px += Math.max(-7, Math.min(7, d)); }
+  const dt = Math.min(100, t - (BK.lastT || t)); BK.lastT = t; const me = bkMine();
+  if (me) { if (bkHold) BK.tx = Math.max(me.lo + me.w / 2, Math.min(me.hi - me.w / 2, BK.tx + bkHold * 14 / BK.tick * dt)); bkSend(); }
   if (!st) return;
   st.k.forEach((v, i) => { if (!v) return; const x = g.BX + (i % g.COLS) * g.BW, y = g.BY + Math.floor(i / g.COLS) * g.BH, bw = g.BW - g.GAP, bh = g.BH - g.GAP;
     c.fillStyle = '#1d2557'; c.fillRect(x, y, bw, bh);
@@ -549,9 +555,9 @@ function drawBreakout(t) { if (!BK || bkcv.classList.contains('hidden')) return;
     if (me2) { if (me2[4]) act.push(['wide', me2[4]]); if (me2[5]) act.push(['shrink', me2[5]]); if (me2[6]) act.push(['laser', me2[6]]); }
     if (st.fx) { if (st.fx[0]) act.push(['slow', st.fx[0]]); if (st.fx[1]) act.push(['fast', st.fx[1]]); }
     for (const [kind, sec] of act) { bkIcon(c, ex + 11, 14, kind); c.fillStyle = '#1d2557'; c.font = '10px Galmuri11, monospace'; c.fillText(sec + 's', ex + 24, 18); ex += 46; } }
-  const k = Math.min(1.5, (t - BK.tAt) / BK.tick);
+  const k = Math.min(1, (t - BK.tAt) / BK.tick);
   for (const [x, y, vx, vy, w] of st.b) { const bx = w ? x : x + vx * k, by = w ? y : y + vy * k; c.fillStyle = '#1d2557'; c.fillRect(bx - g.R, by - g.R, g.R * 2, g.R * 2); c.fillStyle = '#fff'; c.fillRect(bx - g.R + 2, by - g.R + 2, g.R * 2 - 4, g.R * 2 - 4); }
-  for (const [sid, sx, gone] of st.p) { const p = BK.paddles.find(q => q.sid === sid); if (!p || gone) continue; const x = sid === socket.id ? BK.px : sx;
+  for (const [sid, sx, gone] of st.p) { const p = BK.paddles.find(q => q.sid === sid); if (!p || gone) continue; const x = sid === socket.id ? bkDrawX(p, sx, t) : sx;
     c.fillStyle = '#1d2557'; c.fillRect(x - p.w / 2 - 2, g.PY - 2, p.w + 4, g.PH + 4); c.fillStyle = p.color; c.fillRect(x - p.w / 2, g.PY, p.w, g.PH);
     const lk = BK.looks[sid] || {}; drawPet(c, x, g.PY - 1, 22, { ...lk, stage: ['egg', 'dead'].includes(lk.stage) || !lk.stage ? 'baby' : lk.stage, sick: false, sleeping: false }, t, { still: true });
     c.fillStyle = '#1d2557'; c.font = '10px Galmuri11, monospace'; c.textAlign = 'center'; c.fillText(p.nickname + (sid === socket.id ? ' (나)' : ''), x, 318); c.textAlign = 'left'; }
