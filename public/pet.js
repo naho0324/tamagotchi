@@ -1,7 +1,6 @@
 // Pixel chibi renderer (yellow round-faced people, navy outlines)
 const HAIR = ['#7a4a2a', '#2f2f4a', '#f29ab8', '#a98be0', '#f2a25c', '#e8c25a'];
 const PAL = { O: '#1d2557', Y: '#ffe98a', E: '#1d2557', W: '#ffffff', P: '#f7a8b8', M: '#c2455a', L: '#1d2557' };
-const CLOTH = { null: '#3a3a4a', cloth_blue: '#6aa9f2', cloth_pink: '#f27a9a' };
 const HEAD = [
 '....OOOOOOOO....','...OHHHHHHHHO...','..OHHHHHHHHHHO..','.OHHHHHHHHHHHHO.','.OHHYYHHHHYYHHO.',
 'OHHYYYYYYYYYYHHO','OHYYYYYYYYYYYYHO','OHYYEEYYYYEEYYHO','OHYYEWYYYYEWYYHO','OHYPPYYYYYYPPYHO',
@@ -9,10 +8,6 @@ const HEAD = [
 const BODY = ['..OOBBBBBBBBOO..','..OYBBBBBBBBYO..','...OBBBBBBBBO...','...OLLOOOOLLO...','...OOO....OOO...'];
 const BODY2 = ['..OOBBBBBBBBOO..','..OYBBBBBBBBYO..','...OBBBBBBBBO...','...OLLO..OLLO...','...OOO....OOO...'];
 const SLEEP_EYES = { 7: 'OHYYYYYYYYYYYYHO', 8: 'OHYEEEYYYYEEEYHO' };
-const HATS = {
-  hat_ribbon: ['..OO......OO....', '.OPPO....OPPO...', '..OPPOOOOPPO....', '...OOPPPPOO.....'].map(r => r.replace(/P/g, 'R')),
-  hat_crown: ['...O..O..O..O...', '...OCOOCOOCO....'.padEnd(16, '.'), '...OCCCCCCCCO...', '...OOOOOOOOOO...'],
-};
 function drawGrid(ctx, rows, x0, y0, px, pal) {
   rows.forEach((r, j) => { for (let i = 0; i < r.length; i++) { const c = r[i]; if (c === '.') continue; ctx.fillStyle = pal[c] || '#f0f'; ctx.fillRect(Math.round(x0 + i * px), Math.round(y0 + j * px), Math.ceil(px), Math.ceil(px)); } });
 }
@@ -21,6 +16,14 @@ const STAGES = ['egg', 'baby', 'child', 'adult'];
 const SPR = {};
 for (let c = 1; c <= 7; c++) { SPR[c] = {}; for (const s of STAGES) { const im = new Image(); im.src = `assets/pets/${c}/${s}.png`; SPR[c][s] = im; } }
 function petSprite(char, stage) { const c = SPR[char] || SPR[1]; return c[stage] || c.baby; }
+// Whole-outfit sprites for child/adult: assets/outfits/<char>/<stage>/<hair>_<outfit>.png (200x260, feet at y=256)
+const OHAIR = ['base', 'pony', 'bob', 'pigtail', 'afro'], OOUT = ['base', 'hoodie', 'stripe', 'dress', 'hanbok', 'space'];
+const OFIT = { adult: { top: 16, h: 240 }, child: { top: 106, h: 150 } }, OSPR = {};
+function outfitSprite(char, stage, hair, outfit) {
+  if (!OFIT[stage]) return null; char = SPR[char] ? char : 1; hair = OHAIR.includes(hair) ? hair : 'base'; outfit = OOUT.includes(outfit) ? outfit : 'base';
+  const k = `${char}/${stage}/${hair}_${outfit}`; let im = OSPR[k];
+  if (!im) { im = OSPR[k] = new Image(); im.src = `assets/outfits/${k}.png`; }
+  return im.complete && im.width ? im : null; }
 let _tint = null;
 function tinted(img, color, a) { // cached tinted copy (sick)
   const key = '_t' + color; if (img[key]) return img[key];
@@ -36,9 +39,11 @@ function drawPet(ctx, cx, by, size, look, t = 0, opts = {}) {
     const px = size / 18; const g = ['..OOOOOOOOOO....', '.OSSSSSSSSSSO...', 'OSSSSOOSSSSSSO..', 'OSSSOOOOSSSSSO..', 'OSSSSOOSSSSSSO..', 'OSSSSOOSSSSSSO..', 'OSSSSSSSSSSSSO..', 'OSSSSSSSSSSSSO..', 'OOOOOOOOOOOOOO..'];
     drawGrid(ctx, g, cx - 7 * px, by - 9 * px, px, { O: '#1d2557', S: '#c9c9d9' }); return;
   }
-  let img = petSprite(look.char, stage); if (!img.complete || !img.width) return;
+  const osp = outfitSprite(look.char, stage, look.hair, look.outfit), F = osp && OFIT[stage];
+  let img = osp || petSprite(look.char, stage); if (!img.complete || !img.width) return;
   if (look.sick) img = tinted(img, '#7fc23a', 0.35);
-  const h = size, w = h * img.width / img.height, px = size / 18;
+  // outfit sprites: map the 240/150px figure band to `size`; crop region = full width, [top, 256]
+  const sy = F ? F.top : 0, sh = F ? F.h : img.height, h = size, w = h * img.width / sh, px = size / 18;
   const prevSmooth = ctx.imageSmoothingEnabled; ctx.imageSmoothingEnabled = false;
   if (stage === 'egg') {
     const wob = Math.sin(t / 150) * 0.06 * (opts.still ? 0 : 1);
@@ -49,10 +54,9 @@ function drawPet(ctx, cx, by, size, look, t = 0, opts = {}) {
   const top = by - h - hop;
   if (!opts.still) { ctx.fillStyle = 'rgba(29,37,87,.18)'; ctx.fillRect(cx - w * 0.3, by - px * 0.6, w * 0.6, px); }
   if (look.sleeping) ctx.globalAlpha = 0.8;
-  ctx.drawImage(img, Math.round(cx - w / 2), Math.round(top), Math.round(w), Math.round(h));
+  ctx.drawImage(img, 0, sy, img.width, sh, Math.round(cx - w / 2), Math.round(top), Math.round(w), Math.round(h));
   ctx.globalAlpha = 1; ctx.imageSmoothingEnabled = prevSmooth;
-  const hat = look.wearing && look.wearing.hat;
-  if (hat && HATS[hat] && !opts.still) drawGrid(ctx, HATS[hat], cx - 8 * px * 0.8, top - (HATS[hat].length - 2) * px * 0.8, px * 0.8, { O: '#1d2557', R: '#f27a9a', C: '#ffd23f' });
-  if (look.sleeping) { ctx.fillStyle = '#1d2557'; ctx.font = `${Math.round(px * 4)}px Galmuri11, monospace`; ctx.fillText('Z', cx + w / 2, top + px * 3 + Math.sin(t / 300) * px * 2); ctx.font = `${Math.round(px * 3)}px Galmuri11, monospace`; ctx.fillText('z', cx + w / 2 + 3 * px, top); }
-  if (look.sick) { ctx.font = `${Math.round(px * 5)}px sans-serif`; ctx.fillText('🤒', cx + w / 2 - px * 2, top + px * 4); }
+  if (look.sleeping) { ctx.fillStyle = '#1d2557'; ctx.font = `${Math.round(px * 4)}px Galmuri11, monospace`; ctx.fillText('Z', cx + (F ? w * 0.36 : w / 2), top + px * 3 + Math.sin(t / 300) * px * 2); ctx.font = `${Math.round(px * 3)}px Galmuri11, monospace`; ctx.fillText('z', cx + (F ? w * 0.36 : w / 2) + 3 * px, top); }
+  const fw = F ? w * 0.36 : w / 2; // outfit sprites have side padding
+  if (look.sick) { ctx.font = `${Math.round(px * 5)}px sans-serif`; ctx.fillText('🤒', cx + fw - px * 2, top + px * 4); }
 }

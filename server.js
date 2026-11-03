@@ -24,7 +24,9 @@ const snapOf = s => s && s.snap;
 function newCode() { let c; do { c = ''; for (let i = 0; i < 6; i++) c += CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]; } while (rooms.has(c)); return c; }
 const normCode = c => String(c || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
 // give a client its result; also keep the server-side snapshot in step so the gate stays meaningful
-function apply(s, d) { if (!s) return; if (s.snap && d.energy) s.snap.stats.energy = G.clamp(s.snap.stats.energy + d.energy); s.emit('apply', d); }
+function apply(s, d) { if (!s) return d; const p = s.snap;
+  if (p && d.coins > 0 && p.char === 2 && p.stats.happy > 120) d = { ...d, coins: Math.round(d.coins * 1.5), bonus: 1.5 }; // 애교쟁이
+  if (p && d.energy) p.stats.energy = G.clamp(p.stats.energy + d.energy, G.maxOf(p.char, 'energy')); s.emit('apply', d); return d; }
 function canPlay(s, cost) {
   const p = snapOf(s); if (!p) return '펫 정보가 없어요';
   if (p.stage === 'dead') return '하늘나라에 간 펫은 놀 수 없어요';
@@ -33,15 +35,15 @@ function canPlay(s, cost) {
   if (p.stats.energy < cost) return `에너지가 부족해요 (필요: ${cost})`;
   return null;
 }
-const look = s => { const p = s.snap; return { nickname: p.nickname, stage: p.stage, char: p.char, style: 0, wearing: p.wearing, sick: p.sick, sleeping: p.sleeping }; };
+const look = s => { const p = s.snap; return { nickname: p.nickname, stage: p.stage, char: p.char, style: 0, hair: p.hair, outfit: p.outfit, sick: p.sick, sleeping: p.sleeping }; };
 
 function makeRoom() {
   const code = newCode(), room = { code, members: new Map(), queue: null };
   room.snake = new SnakeLobby(io, results => {
-    for (const r of results) { const so = sock(r.sid); if (so) { if (!r.left && r.coins) apply(so, { coins: r.coins }); so.emit('s:end', results); } }
+    for (const r of results) { const so = sock(r.sid); if (so) { if (!r.left && r.coins) r.coins = apply(so, { coins: r.coins }).coins; so.emit('s:end', results); } }
   }, 'snake:' + code);
   room.raid = new RaidLobby(io, (win, results, diff, hp, max) => {
-    for (const r of results) { const so = sock(r.sid); if (so) { if (!r.left && r.coins) apply(so, { coins: r.coins }); so.emit('r:end', { win, diff, hp, max, results, energy: r.energy, coins: r.coins }); } }
+    for (const r of results) { const so = sock(r.sid); if (so) { if (!r.left && r.coins) r.coins = apply(so, { coins: r.coins }).coins; so.emit('r:end', { win, diff, hp, max, results, energy: r.energy, coins: r.coins }); } }
   }, 'raid:' + code);
   room.snake.gate = room.raid.gate = (p, cost) => { const so = sock(p.sid); return so ? canPlay(so, cost) : '연결이 끊겼어요'; };
   room.snake.charge = room.raid.charge = (players, cost) => players.forEach(p => apply(sock(p.sid), { energy: -cost }));
@@ -121,8 +123,8 @@ function startMatch(players, practice) {
   const m = new Match(io, mroom, players, (m, winner, forfeit) => {
     const reward = practice ? 10 : 30; const w = players[winner];
     for (const p of players) if (p.socket) {
-      if (p === w) apply(p.socket, { coins: reward, win: 1 });
-      p.socket.emit('v:end', { winner, score: m.score, forfeit, reward: p === w ? reward : 0, energy: COST.volley });
+      const got = p === w ? apply(p.socket, { coins: reward, win: 1 }).coins : 0;
+      p.socket.emit('v:end', { winner, score: m.score, forfeit, reward: got, energy: COST.volley });
       p.socket.leave(mroom); matches.delete(p.socketId);
     }
   });

@@ -34,7 +34,7 @@ function start() {
   socket.on('connect_error', e => toast('연결 실패: ' + e.message));
   socket.on('connect', () => { sendSnap(); if (myRoom) socket.emit('room:join', myRoom, r => { if (r.ok && inPlaza) socket.emit('plaza:join'); if (!r.ok) { myRoom = null; toast('방이 사라졌어요'); if (!$('#home').classList.contains('hidden')) return; show('home'); } }); });
   // minigame results from the server, applied to the local save
-  socket.on('apply', d => { if (!S) return; tickSim(); if (d.coins) S.coins += Math.max(0, Math.min(500, d.coins | 0));
+  socket.on('apply', d => { if (!S) return; tickSim(); if (d.coins) G.addCoins(S, Math.max(0, Math.min(750, d.coins | 0)));
     if (d.energy) S.pet.stats.energy = G.clamp(S.pet.stats.energy + Math.max(-100, Math.min(100, +d.energy || 0))); if (d.win) S.wins = (S.wins || 0) + 1; save(); renderHud(); });
   bindSocket();
 }
@@ -50,12 +50,14 @@ $('#nick').onkeydown = e => { if (e.key === 'Enter') $('#nick-ok').click(); };
 function renderHud() {
   if (!S) return;
   $('#coins').textContent = S.coins;
-  for (const k of ['hunger', 'happy', 'energy', 'clean']) { const v = S.pet.stats[k], el = $('#b-' + k); el.style.width = v + '%'; $('#n-' + k).textContent = `${Math.round(v)}/100`; el.classList.toggle('low', v < 25 && !['egg','dead'].includes(S.pet.stage)); }
+  for (const k of ['hunger', 'happy', 'energy', 'clean']) { const v = S.pet.stats[k], mx = G.maxOf(S.pet.char, k), el = $('#b-' + k); el.style.width = (v / mx * 100) + '%'; $('#n-' + k).textContent = `${Math.round(v)}/${mx}`; el.classList.toggle('low', v < 25 && !['egg','dead'].includes(S.pet.stage)); }
+  { const tr = G.TRAITS[S.pet.char]; $('#trait').innerHTML = `<b>✨ ${tr.name}</b> ${tr.desc}`; }
   const p = S.pet; let st = `${S.nickname}의 펫 · ${STAGE_KO[p.stage]}`;
   if (p.stage === 'egg') { const left = Math.max(0, Math.ceil((p.bornAt + G.CFG.hatchMs - Date.now()) / 1000)); st += ` · 부화까지 ${left}초`; }
   if (p.sick) st += ' · 아파요! 약이 필요해요'; if (p.sleeping) st += ' · 자는 중'; if (p.stage === 'dead') st += ' · 화면을 눌러 다시 시작';
   $('#status').textContent = st;
   if (!$('#shop-modal').classList.contains('hidden')) renderShop();
+  if (!$('#wardrobe-modal').classList.contains('hidden')) renderWardrobe();
 }
 setInterval(() => { tickSim(); renderHud(); }, 1000);
 setInterval(sendSnap, 5000);
@@ -65,7 +67,7 @@ let fx = [];
 function drawRoom(t) {
   rctx.drawImage(BG, 0, 0, 480, 270);
   if (S) {
-    const look = { ...S.pet, wearing: S.wearing };
+    const look = { ...S.pet, hair: S.hair, outfit: S.outfit };
     drawPet(rctx, 240, 238, S.pet.stage === 'egg' ? 120 : S.pet.stage === 'baby' ? 70 : S.pet.stage === 'child' ? 105 : 130, look, t);
     if (S.pet.sleeping) { rctx.fillStyle = 'rgba(29,37,87,.25)'; rctx.fillRect(0, 0, 480, 270); }
   }
@@ -99,7 +101,9 @@ $('#bk-yes').onclick = () => { if (!pendingImport) return; const p = pendingImpo
 function openPlazaOrRooms() { if (myRoom) return enterPlaza(); $('#room-code').value = ''; show('rooms'); }
 function joined(r) { if (!r.ok) return toast(r.msg || '실패했어요'); myRoom = r.code; enterPlaza(); }
 $('#room-create').onclick = () => { sendSnap(); socket.emit('room:create', joined); };
-$('#room-join').onclick = () => { const c = $('#room-code').value.trim(); if (!c) return toast('방 코드를 입력해주세요'); sendSnap(); socket.emit('room:join', c, joined); };
+// pasted text may contain spaces or words around the code ("코드: AB CD 12"); pick the 6-char code out of it
+const pickCode = v => { v = String(v || '').toUpperCase(); const m = v.match(/(?:^|[^A-Z0-9])([A-Z0-9]{6})(?![A-Z0-9])/); return m ? m[1] : v.replace(/[^A-Z0-9]/g, '').slice(0, 6); };
+$('#room-join').onclick = () => { const c = pickCode($('#room-code').value); if (!c) return toast('방 코드를 입력해주세요'); sendSnap(); socket.emit('room:join', c, joined); };
 $('#room-code').onkeydown = e => { if (e.key === 'Enter') $('#room-join').click(); };
 $('#rooms-back').onclick = () => show('home');
 $('#room-copy').onclick = () => myRoom && copyText(myRoom);
@@ -108,24 +112,48 @@ document.querySelectorAll('.buttons button').forEach(b => b.onclick = () => {
   const a = b.dataset.act;
   if (a === 'shop') { renderShop(); $('#shop-modal').classList.remove('hidden'); }
   else if (a === 'plaza') openPlazaOrRooms();
+  else if (a === 'wardrobe') openWardrobe();
   else act(a);
 });
 roomCv.onclick = () => { if (S && S.pet.stage === 'dead') act('restart'); };
+const icon = (type, key) => `<img class="ico" src="assets/outfits/${S.pet.char}/${S.pet.stage === 'adult' ? 'adult' : 'child'}/${type === 'hair' ? key + '_base' : 'base_' + key}.png" alt="">`;
 function renderShop() {
   const sl = $('#shop-list'); sl.innerHTML = '';
-  for (const [k, it] of Object.entries(G.SHOP)) {
-    const owned = S.owned.includes(k), d = document.createElement('div'); d.className = 'item';
-    d.innerHTML = `<span>${it.name} <small>🪙${it.price}</small></span>`;
+  const row = (k, it) => { const owned = S.owned.includes(k), d = document.createElement('div'), wear = it.type !== 'consumable'; d.className = 'item';
+    const price = G.priceOf(S, k);
+    d.innerHTML = `<span>${wear ? icon(it.type, it.key) : ''}${it.name} <small>${wear ? (it.type === 'hair' ? '헤어' : '옷') + ' · ' : ''}🪙${price}${price < it.price ? ' (반값!)' : ''}</small></span>`;
     const b = document.createElement('button'); b.className = 'small';
-    if (it.type !== 'consumable' && owned) { const w = S.wearing.hat === k || S.wearing.clothes === k; b.textContent = w ? '벗기' : '입기'; b.onclick = () => act('equip', k); }
+    if (wear && owned) { b.textContent = '보유중'; b.disabled = true; }
     else { b.textContent = '구매'; b.onclick = () => act('buy', k); }
-    d.appendChild(b); sl.appendChild(d);
-  }
+    d.appendChild(b); return d; };
+  const h = t => { const e = document.createElement('h3'); e.textContent = t; return e; };
+  sl.appendChild(h('먹을 것 · 약'));
+  for (const k of ['snack', 'medicine']) sl.appendChild(row(k, G.SHOP[k]));
+  sl.appendChild(h('헤어 💇'));
+  for (const [k, it] of Object.entries(G.SHOP)) if (it.type === 'hair') sl.appendChild(row(k, it));
+  sl.appendChild(h('옷 👗'));
+  for (const [k, it] of Object.entries(G.SHOP)) if (it.type === 'outfit') sl.appendChild(row(k, it));
   const il = $('#inv-list'); il.innerHTML = '';
   for (const k of ['snack', 'medicine']) { const d = document.createElement('div'); d.className = 'item'; d.innerHTML = `<span>${G.SHOP[k].name} x${S.inventory[k] || 0}</span>`;
     const b = document.createElement('button'); b.className = 'small'; b.textContent = '사용'; b.onclick = () => act('use', k); d.appendChild(b); il.appendChild(d); }
 }
-
+// ---- WARDROBE (꾸미기): 헤어/옷 tabs, live preview ----
+let wTab = 'hair'; const wcv = $('#wPreview'), wctx = wcv.getContext('2d');
+const BASE_KO = { hair: '기본 머리', outfit: '기본 옷' };
+function openWardrobe() { renderWardrobe(); $('#wardrobe-modal').classList.remove('hidden'); }
+function renderWardrobe() {
+  const tabs = $('#w-tabs'); tabs.innerHTML = '';
+  for (const [t, ko] of [['hair', '헤어'], ['outfit', '옷']]) { const b = document.createElement('button'); b.className = 'small' + (t === wTab ? ' sel' : ''); b.textContent = ko; b.dataset.tab = t; b.onclick = () => { wTab = t; renderWardrobe(); }; tabs.appendChild(b); }
+  const list = $('#w-list'); list.innerHTML = '';
+  const keys = (wTab === 'hair' ? G.HAIRS : G.OUTFITS).filter(k => G.ownKey(S, wTab, k));
+  for (const k of keys) { const on = S[wTab] === k, b = document.createElement('button'); b.className = 'w-item' + (on ? ' on' : ''); b.dataset.item = wTab + ':' + k;
+    b.innerHTML = `${icon(wTab, k)}<small>${k === 'base' ? BASE_KO[wTab] : G.SHOP[wTab + '_' + k].name}</small><em>${on ? '착용중' : ''}</em>`; b.onclick = () => act('equip', wTab + ':' + k); list.appendChild(b); }
+  if (keys.length < 2) list.insertAdjacentHTML('beforeend', '<p class="hint">상점에서 더 사보세요!</p>');
+  $('#w-note').textContent = ['egg', 'baby'].includes(S.pet.stage) ? '어린이가 되면 옷을 입어요 (미리보기)' : S.pet.stage === 'dead' ? '' : '눌러서 갈아입기';
+}
+function drawWardrobe(t) { const c = wctx; c.fillStyle = '#fff5f8'; c.fillRect(0, 0, wcv.width, wcv.height); c.fillStyle = '#fbe3ea'; c.fillRect(0, wcv.height - 26, wcv.width, 26);
+  const stage = ['child', 'adult'].includes(S.pet.stage) ? S.pet.stage : 'child';
+  drawPet(c, wcv.width / 2, wcv.height - 14, stage === 'adult' ? 200 : 150, { ...S.pet, stage, sick: false, sleeping: false, hair: S.hair, outfit: S.outfit }, t, { still: true }); }
 // ---- PLAZA ----
 const pcv = $('#plazaCv'), pctx = pcv.getContext('2d'); pctx.imageSmoothingEnabled = false;
 let plazaMeta = {}, plazaList = [], plazaDisp = {}, me = { x: 240, y: 220, tx: 240, ty: 220 }, inPlaza = false, lastMove = 0;
@@ -296,7 +324,7 @@ function renderRaidLobby(l) {
   document.querySelectorAll('#r-diff button').forEach(b => { b.classList.toggle('sel', b.dataset.d === l.diff); b.disabled = l.host !== socket.id; });
   const pl = $('#r-players'); pl.innerHTML = '';
   l.players.forEach(p => { const d = document.createElement('div'); d.className = 'item';
-    d.innerHTML = `<span>${p.nickname}${p.sid === socket.id ? ' (나)' : ''} <small>${STAGE_KO[p.stage] || ''} ⚔️ x${p.pow}</small></span><span>${p.sid === l.host ? '👑 방장' : ''}</span>`; pl.appendChild(d); });
+    d.innerHTML = `<span>${p.nickname}${p.sid === socket.id ? ' (나)' : ''} <small>${STAGE_KO[p.stage] || ''} ⚔️ x${p.pow} ❤️${p.hp || 100}</small></span><span>${p.sid === l.host ? '👑 방장' : ''}</span>`; pl.appendChild(d); });
   $('#r-start').classList.toggle('hidden', l.host !== socket.id || l.state !== 'lobby');
   $('#r-info').textContent = l.state === 'playing' ? '레이드 진행 중...' : l.countdown ? `${l.countdown}초 후 자동 시작!` : (l.players.length < 2 ? '동료를 기다리는 중 · 혼자서도 도전할 수 있어요' : '') + ` · 난이도: ${DIFF_KO[l.diff] || '보통'} (⚡${l.cost})` + (l.host === socket.id ? ' (방장이 선택)' : ' (방장이 고르는 중)');
 }
@@ -348,10 +376,10 @@ function drawRaid(t) {
       for (const [w, col] of [[14, 'rgba(255,40,60,.5)'], [6, '#ff3050'], [2, '#fff']]) { c.strokeStyle = col; c.lineWidth = w; c.beginPath(); c.moveTo(ex, ey); c.lineTo(sx, 300); c.moveTo(ex + 16, ey); c.lineTo(sx + 6, 300); c.stroke(); } } }
   // players (sorted by y)
   const dt = (now - RD.tAt) / 33;
-  const ents = st.p.map(([sid, x, y, hp, alive, sk, inv]) => {
+  const ents = st.p.map(([sid, x, y, hp, alive, sk, inv, mhp]) => {
     let d = RD.disp[sid] || (RD.disp[sid] = { x, y });
     if (sid === socket.id) { d.x = RD.pred.x; d.y = RD.pred.y; } else { d.x += (x - d.x) * 0.3; d.y += (y - d.y) * 0.3; }
-    return { sid, hp, alive, inv, d };
+    return { sid, hp, alive, inv, d, mhp: mhp || 100 };
   }).sort((a, b) => a.d.y - b.d.y);
   for (const e of ents) { const look = RD.looks[e.sid] || {}, stage = ['egg', 'dead'].includes(look.stage) || !look.stage ? 'baby' : look.stage;
     const sz = stage === 'baby' ? 34 : stage === 'child' ? 44 : 52;
@@ -359,8 +387,8 @@ function drawRaid(t) {
     drawPet(c, e.d.x, e.d.y, sz, { ...look, stage, sick: !e.alive, sleeping: false }, t + e.d.x * 7, { walking: e.alive });
     c.globalAlpha = 1;
     if (!e.alive) { c.font = '14px sans-serif'; c.fillText('😵', e.d.x - 8, e.d.y - sz - 2); }
-    c.fillStyle = '#1d2557'; c.fillRect(e.d.x - 17, e.d.y + 3, 34, 6); c.fillStyle = e.hp > 30 ? '#7cd97a' : '#f25a5a'; c.fillRect(e.d.x - 16, e.d.y + 4, 32 * e.hp / 100, 4);
-    c.font = '9px Galmuri9, monospace'; c.textAlign = 'center'; c.lineWidth = 3; c.strokeStyle = '#fff'; c.strokeText(`${Math.ceil(e.hp)}/100`, e.d.x, e.d.y + 30); c.fillStyle = "#1d2557"; c.fillText(`${Math.ceil(e.hp)}/100`, e.d.x, e.d.y + 30); c.textAlign = 'left';
+    c.fillStyle = '#1d2557'; c.fillRect(e.d.x - 17, e.d.y + 3, 34, 6); c.fillStyle = e.hp > e.mhp * 0.3 ? '#7cd97a' : '#f25a5a'; c.fillRect(e.d.x - 16, e.d.y + 4, 32 * e.hp / e.mhp, 4);
+    c.font = '9px Galmuri9, monospace'; c.textAlign = 'center'; c.lineWidth = 3; c.strokeStyle = '#fff'; c.strokeText(`${Math.ceil(e.hp)}/${e.mhp}`, e.d.x, e.d.y + 30); c.fillStyle = "#1d2557"; c.fillText(`${Math.ceil(e.hp)}/${e.mhp}`, e.d.x, e.d.y + 30); c.textAlign = 'left';
     c.font = '10px Galmuri9, monospace'; c.textAlign = 'center'; c.fillStyle = e.sid === socket.id ? '#ffd2e0' : '#fff'; c.fillText((look.nickname || '') + (e.sid === socket.id ? '(나)' : ''), e.d.x, e.d.y + 19); c.textAlign = 'left';
   }
   // stars (extrapolated)
@@ -379,7 +407,7 @@ function kickedToPlaza(m) { toast(m); RD = null; SN = null; enterPlaza(); }
 function bindRaid() {
   socket.on('r:kicked', kickedToPlaza); socket.on('s:kicked', kickedToPlaza); socket.on('v:kicked', m => { $('#match-status').textContent = m; });
   socket.on('r:lobby', l => { if (!$('#raid').classList.contains('hidden') && !RD) renderRaidLobby(l); });
-  socket.on('r:start', d => { RD = { diffName: d.diffName, cur: null, looks: d.looks, cfg: d.cfg, disp: {}, pred: { x: 240, y: 255 }, acc: 0, lastT: 0, skLocal: 0, tAt: 0, bx: null, startAt: performance.now(), init: false };
+  socket.on('r:start', d => { if (d.cheer) toast('애교쟁이의 응원! 모두 공격력 +10% 📣'); RD = { diffName: d.diffName, cur: null, looks: d.looks, cfg: d.cfg, disp: {}, pred: { x: 240, y: 255 }, acc: 0, lastT: 0, skLocal: 0, tAt: 0, bx: null, startAt: performance.now(), init: false };
     Object.keys(rkeys).forEach(k => rkeys[k] = false); $('#r-lobby').classList.add('hidden'); rcv.classList.remove('hidden'); $('#raid .raid-act').classList.remove('hidden'); });
   socket.on('r:state', st => { if (!RD) return; RD.cur = st; RD.tAt = performance.now(); $('#r-time').textContent = `⏱ ${Math.floor(st.t / 60)}:${String(st.t % 60).padStart(2, '0')}`;
     const me = st.p.find(q => q[0] === socket.id); if (!me) return; const [, sx, sy, , , sk] = me, P = RD.pred;
@@ -418,6 +446,7 @@ function bindSocket() {
 $('#end-ok').onclick = () => { closeModal('end-modal'); if (!$('#snake').classList.contains('hidden') || !$('#raid').classList.contains('hidden')) { enterPlaza(); return; } if (inPlaza) { show('plaza'); $('#match-status').textContent = '화면을 눌러 이동해요'; } else show('home'); };
 function loop(t) {
   if (!$('#home').classList.contains('hidden')) drawRoom(t);
+  if (S && !$('#wardrobe-modal').classList.contains('hidden')) drawWardrobe(t);
   if (!$('#plaza').classList.contains('hidden') && socket) drawPlaza(t);
   if (!$('#volley').classList.contains('hidden')) drawVolley(t);
   if (!$('#snake').classList.contains('hidden')) drawSnake(t);

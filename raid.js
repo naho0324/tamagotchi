@@ -1,7 +1,7 @@
 // Server-authoritative boss raid (1-6 players) vs 몽꾸. One shared lobby at a time.
 const W = 480, H = 300, TICK = 1000 / 30, TIME_LIMIT = +process.env.RAID_TIME || 120, AUTO_START = 15, MAX = 6;
 const GY0 = 205, GY1 = 285, SPEED = 3.2, PHP = 100;
-const { POWER } = require('./game'); // egg x0.5, baby x1, child x1.5, adult x2.2
+const { POWER, raidHpOf, raidAtkOf } = require('./game'); // egg x0.5, baby x1, child x1.5, adult x2.2
 const ATK_CD = 9, SKILL_CD = 150, ATK_DMG = 6, SKILL_DMG = 36; // ticks / dmg
 const BOSS_Y = 150, BOSS_HW = 46, BOSS_TOP = 30; // boss feet at y=BOSS_Y, hitbox
 const DIFF = { // hp: boss HP mult, gap: attack interval mult, dmg: damage mult, tele: telegraph mult, enr: enrage threshold
@@ -12,7 +12,7 @@ const DIFF = { // hp: boss HP mult, gap: attack interval mult, dmg: damage mult,
 class RaidLobby {
   constructor(io, onEnd, room = 'raid') { this.io = io; this.onEnd = onEnd; this.room = room; this.players = []; this.state = 'lobby'; this.countdown = null; this.diff = 'normal'; }
   emitLobby() { this.io.to(this.room).emit('r:lobby', { diff: this.diff, cost: this.cost(), state: this.state, countdown: this.countdown, host: this.players[0] && this.players[0].sid,
-    players: this.players.map(p => ({ sid: p.sid, nickname: p.look.nickname, stage: p.look.stage, char: p.look.char, pow: POWER[p.look.stage] || 1 })) }); }
+    players: this.players.map(p => ({ sid: p.sid, nickname: p.look.nickname, stage: p.look.stage, char: p.look.char, pow: Math.round((POWER[p.look.stage] || 1) * raidAtkOf(p.look.char) * (this.players.some(q => +q.look.char === 2) ? 1.1 : 1) * 100) / 100, hp: raidHpOf(p.look.char) })) }); }
   setDiff(sid, d) { if (this.state !== 'lobby' || !DIFF[d]) return '바꿀 수 없어요'; if (!this.players[0] || this.players[0].sid !== sid) return '방장만 난이도를 고를 수 있어요';
     this.diff = d; this.emitLobby(); return null; }
   cost() { return DIFF[this.diff].energy; }
@@ -46,13 +46,16 @@ class RaidLobby {
     this.state = 'playing'; this.ticks = 0; this.over = false;
     const n = this.players.length, D = this.D = DIFF[this.diff], maxHp = Math.round((500 + 300 * n) * D.hp);
     this.boss = { x: W / 2, dir: 1, hp: maxHp, max: maxHp, flinch: 0, next: 60, enr: false };
-    this.fighters = this.players.map((p, i) => ({ sid: p.sid, nickname: p.look.nickname, x: 60 + i * (360 / Math.max(1, n - 1 || 1)), y: 255, hp: PHP, alive: true,
-      inp: {}, atk: 0, sk: 0, inv: 0, pow: POWER[p.look.stage] || 1 }));
+    // traits: 운동광/튼튼이 more HP, 먹보 x1.3 attack, any 애교쟁이 cheers everyone +10% (once)
+    const cheer = this.players.some(p => +p.look.char === 2) ? 1.1 : 1;
+    this.fighters = this.players.map((p, i) => { const mhp = raidHpOf(p.look.char); return { sid: p.sid, nickname: p.look.nickname, x: 60 + i * (360 / Math.max(1, n - 1 || 1)), y: 255, hp: mhp, mhp, alive: true,
+      inp: {}, atk: 0, sk: 0, inv: 0, pow: (POWER[p.look.stage] || 1) * raidAtkOf(p.look.char) * cheer }; });
+    this.cheer = cheer > 1;
     if (n === 1) this.fighters[0].x = W / 2;
     this.stars = []; this.bombs = []; this.frogs = []; this.laser = null; this.sid = 0;
     this.emitLobby();
     this.io.to(this.room).emit('r:start', { diff: this.diff, diffName: D.name, time: TIME_LIMIT, looks: Object.fromEntries(this.players.map(p => [p.sid, p.look])),
-      cfg: { W, H, GY0, GY1, SPEED, SKILL_CD, ATK_CD } });
+      cfg: { W, H, GY0, GY1, SPEED, SKILL_CD, ATK_CD }, cheer: this.cheer });
     this.timer = setInterval(() => this.step(), TICK); return null;
   }
   input(sid, inp) { const f = this.fighters && this.fighters.find(f => f.sid === sid); if (f && inp) f.inp = { l: !!inp.l, r: !!inp.r, u: !!inp.u, d: !!inp.d }; }
@@ -113,7 +116,7 @@ class RaidLobby {
   snapshot(left) {
     const b = this.boss, L = this.laser, r1 = v => Math.round(v * 10) / 10;
     return { t: left, b: [r1(b.x), Math.ceil(b.hp), b.max, b.enr ? 1 : 0, b.flinch],
-      p: this.fighters.map(f => [f.sid, r1(f.x), r1(f.y), f.hp, f.alive ? 1 : 0, f.sk, f.inv]),
+      p: this.fighters.map(f => [f.sid, r1(f.x), r1(f.y), f.hp, f.alive ? 1 : 0, f.sk, f.inv, f.mhp]),
       s: this.stars.map(s => [s.id, r1(s.x), r1(s.y), s.vy, s.big]), m: this.bombs.map(m => [m.x | 0, m.y | 0, m.t, m.max]),
       f: this.frogs.map(f => [r1(f.x), r1(f.y), r1(f.vx), r1(f.vy)]), l: L ? [L.x0, L.x1, L.warn, L.k, L.dur] : null };
   }

@@ -4,7 +4,7 @@ const G = require('../game');
 const URL = process.env.URL || 'http://localhost:3456', RUN = Date.now().toString(36); let k = 0;
 function mk(nick, pet = {}) {
   const c = io(URL, { auth: { playerId: `t-${RUN}-${k++}`, nickname: nick }, transports: ['websocket'], forceNew: true });
-  c.pl = G.newPlayer('x', nick, Date.now()); Object.assign(c.pl.pet, { stage: 'baby', hatchedAt: Date.now() }, pet); c.pl.pet.stats = { hunger: 90, happy: 90, energy: 100, clean: 90, ...(pet.stats || {}) };
+  c.pl = G.newPlayer('x', nick, Date.now(), pet.char || 3); Object.assign(c.pl.pet, { stage: 'baby', hatchedAt: Date.now() }, pet); c.pl.pet.stats = { hunger: 90, happy: 90, energy: 100, clean: 90, ...(pet.stats || {}) };
   c.toasts = []; c.applied = []; c.on('toast', m => c.toasts.push(m));
   c.on('apply', d => { c.applied.push(d); if (d.coins) c.pl.coins += d.coins; if (d.energy) c.pl.pet.stats.energy = G.clamp(c.pl.pet.stats.energy + d.energy); });
   c.snap = () => c.emit('snap', G.snapOf(c.pl));

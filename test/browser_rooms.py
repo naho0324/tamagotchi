@@ -24,7 +24,7 @@ async def main():
         assert '3/6' in await A.text_content('#plaza-count')
         for pg in pages: await pg.click('#raid-btn'); await pg.wait_for_timeout(300)
         await A.wait_for_timeout(800); await A.screenshot(path='test/raid_lobby_mult.png')
-        txt = await A.text_content('#r-players'); print(txt); assert 'x0.5' not in txt and 'x2.2' in txt and 'x1.5' in txt and 'x1' in txt
+        txt = await A.text_content('#r-players'); print(txt); assert 'x0.5' not in txt and 'x2.42' in txt and 'x1.65' in txt and 'x1.1' in txt  # 애교쟁이 (char 2) cheer +10%
         for pg in pages: await pg.click('#r-back')
         # backup: export from A, import into B with confirm
         await C.click('#plaza-back'); await C.click('#backup-btn'); await C.wait_for_timeout(300); code_bk = await C.input_value('#bk-export')
