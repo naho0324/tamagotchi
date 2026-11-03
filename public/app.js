@@ -521,13 +521,14 @@ function bkLobby(l) { const pl = $('#bk-players'); pl.innerHTML = '';
 function bkBind() {
   socket.on('bk:lobby', l => { if (!$('#breakout').classList.contains('hidden')) bkLobby(l); });
   socket.on('bk:kicked', kickedToPlaza);
-  socket.on('bk:start', d => { BK = { ...d, cur: null, tAt: 0, sent: 0 }; const me = bkMine(); BK.px = BK.tx = me ? (me.lo + me.hi) / 2 : 240;
+  socket.on('bk:start', d => { BK = { ...d, cur: null, tAt: 0, sent: 0, pops: [] }; const me = bkMine(); BK.px = BK.tx = me ? (me.lo + me.hi) / 2 : 240;
     $('#bk-lobby').classList.add('hidden'); bkcv.classList.remove('hidden'); });
-  socket.on('bk:level', lv => { toast(`${lv}단계! 공이 빨라져요 🧱`); });
-  socket.on('bk:state', st => { if (!BK) return; BK.cur = st; BK.tAt = performance.now(); $('#bk-hud').textContent = `${st.lv}단계 · ${'♥'.repeat(Math.max(0, st.lives))} · ⏱${st.t}`; });
+  socket.on('bk:level', lv => { toast(`${lv}단계! 더 어려워져요 🧱`); });
+  socket.on('bk:item', d => { if (!BK) return; const p = BK.cur && BK.cur.p.find(q => q[0] === d.sid); BK.pops.push({ text: d.label, kind: d.kind, x: p ? p[1] : 240, t: performance.now() }); });
+  socket.on('bk:state', st => { if (!BK) return; BK.cur = st; for (const q of st.p) { const p = BK.paddles.find(x => x.sid === q[0]); if (p) p.w = q[3]; } BK.tAt = performance.now(); $('#bk-hud').textContent = `${st.lv}단계 · ${'♥'.repeat(Math.max(0, st.lives))} · ⏱${st.t}`; });
   socket.on('bk:end', res => { BK = null; const me = res.find(r => r.sid === socket.id) || res[0];
     $('#end-title').textContent = me.win ? '🏆 모든 벽돌 클리어!' : '🧱 게임 끝!';
-    $('#end-msg').textContent = `${res.map(r => r.nickname).join(' + ')} · 벽돌 ${me.bricks}개 · ${me.levels}단계 클리어 · +${me.coins} 코인, 에너지 -${me.energy}`;
+    $('#end-msg').textContent = `${res.map(r => r.nickname).join(' + ')} · 벽돌 ${me.bricks}개${me.levels ? ` · ${me.levels}단계 클리어` : ''} · +${me.coins} 코인, 에너지 -${me.energy}`;
     $('#end-modal').classList.remove('hidden'); });
 }
 function drawBreakout(t) { if (!BK || bkcv.classList.contains('hidden')) return; const c = bkctx, g = BK.geo, st = BK.cur;
@@ -536,13 +537,34 @@ function drawBreakout(t) { if (!BK || bkcv.classList.contains('hidden')) return;
   const me = bkMine(); if (me) { if (bkHold) { BK.tx = Math.max(me.lo + me.w / 2, Math.min(me.hi - me.w / 2, BK.tx + bkHold * 7)); if (t - (BK.sent || 0) > 30) { BK.sent = t; socket.emit('bk:x', BK.tx); } }
     const d = BK.tx - BK.px; BK.px += Math.max(-7, Math.min(7, d)); }
   if (!st) return;
-  st.k.forEach((v, i) => { if (!v) return; const x = g.BX + (i % g.COLS) * g.BW, y = g.BY + Math.floor(i / g.COLS) * g.BH;
-    c.fillStyle = '#1d2557'; c.fillRect(x, y, g.BW - g.GAP, g.BH - g.GAP); c.fillStyle = v > 1 ? '#8a7fb8' : BRICK_COL[Math.floor(i / g.COLS) % 5]; c.fillRect(x + 2, y + 2, g.BW - g.GAP - 4, g.BH - g.GAP - 4);
-    c.fillStyle = 'rgba(255,255,255,.55)'; c.fillRect(x + 3, y + 3, g.BW - g.GAP - 10, 2); });
+  st.k.forEach((v, i) => { if (!v) return; const x = g.BX + (i % g.COLS) * g.BW, y = g.BY + Math.floor(i / g.COLS) * g.BH, bw = g.BW - g.GAP, bh = g.BH - g.GAP;
+    c.fillStyle = '#1d2557'; c.fillRect(x, y, bw, bh);
+    if (v === 9) { c.fillStyle = '#7d869a'; c.fillRect(x + 2, y + 2, bw - 4, bh - 4); c.fillStyle = '#3d4458'; c.fillRect(x + 2, y + bh - 4, bw - 4, 2); for (const rx of [5, bw - 7]) c.fillRect(x + rx, y + 5, 2, 2); c.fillStyle = 'rgba(255,255,255,.6)'; c.fillRect(x + 3, y + 3, bw - 6, 1); return; }
+    c.fillStyle = v === 3 ? '#6a4fb3' : v === 2 ? '#e0913a' : BRICK_COL[Math.floor(i / g.COLS) % 5]; c.fillRect(x + 2, y + 2, bw - 4, bh - 4);
+    c.fillStyle = 'rgba(255,255,255,.55)'; c.fillRect(x + 3, y + 3, bw - 10, 2);
+    if (v > 1) { c.fillStyle = '#fff'; for (let j = 0; j < v; j++) c.fillRect(x + bw / 2 - v * 3 + j * 6 + 1, y + 8, 4, 3); } });
+  for (const [x, y] of st.sh || []) { c.fillStyle = '#ff3b6b'; c.fillRect(x - 1, y - 6, 3, 8); c.fillStyle = '#fff'; c.fillRect(x, y - 5, 1, 4); }
+  for (const [x, y, kind] of st.it || []) bkIcon(c, x, y + (t - BK.tAt) / BK.tick * 2.2, kind);
+  { let ex = 6; const me2 = st.p.find(q => q[0] === socket.id) || st.p[0], act = [];
+    if (me2) { if (me2[4]) act.push(['wide', me2[4]]); if (me2[5]) act.push(['shrink', me2[5]]); if (me2[6]) act.push(['laser', me2[6]]); }
+    if (st.fx) { if (st.fx[0]) act.push(['slow', st.fx[0]]); if (st.fx[1]) act.push(['fast', st.fx[1]]); }
+    for (const [kind, sec] of act) { bkIcon(c, ex + 11, 14, kind); c.fillStyle = '#1d2557'; c.font = '10px Galmuri11, monospace'; c.fillText(sec + 's', ex + 24, 18); ex += 46; } }
   const k = Math.min(1.5, (t - BK.tAt) / BK.tick);
   for (const [x, y, vx, vy, w] of st.b) { const bx = w ? x : x + vx * k, by = w ? y : y + vy * k; c.fillStyle = '#1d2557'; c.fillRect(bx - g.R, by - g.R, g.R * 2, g.R * 2); c.fillStyle = '#fff'; c.fillRect(bx - g.R + 2, by - g.R + 2, g.R * 2 - 4, g.R * 2 - 4); }
   for (const [sid, sx, gone] of st.p) { const p = BK.paddles.find(q => q.sid === sid); if (!p || gone) continue; const x = sid === socket.id ? BK.px : sx;
     c.fillStyle = '#1d2557'; c.fillRect(x - p.w / 2 - 2, g.PY - 2, p.w + 4, g.PH + 4); c.fillStyle = p.color; c.fillRect(x - p.w / 2, g.PY, p.w, g.PH);
     const lk = BK.looks[sid] || {}; drawPet(c, x, g.PY - 1, 22, { ...lk, stage: ['egg', 'dead'].includes(lk.stage) || !lk.stage ? 'baby' : lk.stage, sick: false, sleeping: false }, t, { still: true });
-    c.fillStyle = '#1d2557'; c.font = '10px Galmuri11, monospace'; c.textAlign = 'center'; c.fillText(p.nickname + (sid === socket.id ? ' (나)' : ''), x, 318); c.textAlign = 'left'; } }
+    c.fillStyle = '#1d2557'; c.font = '10px Galmuri11, monospace'; c.textAlign = 'center'; c.fillText(p.nickname + (sid === socket.id ? ' (나)' : ''), x, 318); c.textAlign = 'left'; }
+  BK.pops = BK.pops.filter(p => t - p.t < 1400);
+  BK.pops.forEach((p, n) => { const a = (t - p.t) / 1400, y = g.PY - 34 - a * 30 - (BK.pops.length - 1 - n) * 15; c.globalAlpha = 1 - a * a; c.font = 'bold 13px Galmuri11, monospace'; c.textAlign = 'center';
+    c.fillStyle = '#fff'; for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) c.fillText(p.text, Math.max(50, Math.min(430, p.x)) + dx, y + dy);
+    c.fillStyle = BK_ITEM[p.kind][0]; c.fillText(p.text, Math.max(50, Math.min(430, p.x)), y); c.textAlign = 'left'; c.globalAlpha = 1; }); }
+// item capsules: color + 5x5 pixel glyph (good items bright, bad ones dark red)
+const BK_ITEM = { wide: ['#2f9e6b', ['00000', '10001', '11111', '10001', '00000']], multi: ['#3f7fe0', ['01000', '00010', '01000', '00010', '01000']],
+  slow: ['#29a3b8', ['11111', '01010', '00100', '01010', '11111']], laser: ['#e0435f', ['00100', '00100', '00100', '01110', '10101']],
+  life: ['#f2668b', ['01010', '11111', '11111', '01110', '00100']], shrink: ['#7a2a3a', ['00000', '01110', '01110', '01110', '00000']],
+  fast: ['#b8452a', ['10100', '01010', '00101', '01010', '10100']] };
+function bkIcon(c, x, y, kind) { const [col, px] = BK_ITEM[kind] || BK_ITEM.wide; x = Math.round(x); y = Math.round(y);
+  c.fillStyle = '#1d2557'; c.fillRect(x - 11, y - 7, 22, 14); c.fillStyle = col; c.fillRect(x - 9, y - 5, 18, 10);
+  c.fillStyle = '#fff'; px.forEach((row, r) => [...row].forEach((v, k) => { if (v === '1') c.fillRect(x - 5 + k * 2, y - 5 + r * 2, 2, 2); })); }
 (function bkLoop(t) { drawBreakout(t); requestAnimationFrame(bkLoop); })(performance.now());

@@ -3,7 +3,7 @@ const { mk, wait, once, assert, roomOf, join } = require('./lib');
 const { coinsFor, ENERGY } = require('../breakout');
 (async () => {
   assert(ENERGY === 10, 'energy 10');
-  assert(coinsFor(0, 0) === 5 && coinsFor(4, 0) === 11 && coinsFor(40, 1) === 25 && coinsFor(120, 3) === 30, 'coins 5 / 10..30 by bricks + levels');
+  assert(coinsFor(0) === 3 && coinsFor(1) === 6 && coinsFor(10) === 33 && coinsFor(25) === 78 && coinsFor(49) === 150 && coinsFor(50) === 150, 'coins by stages: 3 + 3/stage, 150 at 49-50');
   // solo: start, paddle follows input, track the ball to break bricks, then stop and lose all lives
   const [a] = await roomOf(1, '벽돌'); a.emit('bk:join'); await once(a, 'bk:lobby'); a.emit('bk:start'); const s = await once(a, 'bk:start');
   assert(s.paddles.length === 1 && s.paddles[0].lo === 0 && s.paddles[0].hi === 480, 'solo paddle has full width');
@@ -11,7 +11,7 @@ const { coinsFor, ENERGY } = require('../breakout');
   let st = null, track = true; a.on('bk:state', x => { st = x; if (track && x.b[0]) a.emit('bk:x', x.b[0][0]); });
   await wait(8000); assert(st && st.br > 0, `tracking bot broke bricks (${st && st.br})`);
   track = false; a.emit('bk:x', 0); const end = await once(a, 'bk:end', 60000), me = end[0];
-  assert(me.bricks === st.br || me.bricks >= st.br, 'result counts bricks'); assert(me.coins === coinsFor(me.bricks, me.levels) && me.coins >= 10, `solo coins ${me.coins} for ${me.bricks} bricks`);
+  assert(me.bricks === st.br || me.bricks >= st.br, 'result counts bricks'); assert(me.coins === coinsFor(me.levels), `solo coins ${me.coins} for ${me.levels} stages (${me.bricks} bricks don't count)`);
   assert(a.applied.some(d => d.coins === me.coins), 'coins applied by server');
   // 2 players: each paddle limited to its half; third player refused
   const cl = await roomOf(3, '협동'); const [p, q, r] = cl; p.emit('bk:join'); await wait(150); q.emit('bk:join'); await wait(150); r.emit('bk:join'); await wait(300);
