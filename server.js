@@ -1,117 +1,133 @@
-const express = require('express'), http = require('http'), fs = require('fs'), path = require('path');
+// Stateless relay server: pets/coins/items live in each browser (localStorage). The server only hosts rooms + minigames,
+// trusts (and clamps) the pet snapshot a client sends, and returns results ({coins, energy}) for the client to apply.
+const express = require('express'), http = require('http'), path = require('path');
 const { Server } = require('socket.io');
 const { resolvePlayer } = require('./auth');
 const G = require('./game');
 const { Match } = require('./volley');
 const { SnakeLobby } = require('./snake');
 const { RaidLobby } = require('./raid');
-const DATA = path.join(process.env.DATA_DIR || __dirname, 'data.json');
-let db = { players: {} };
-try { db = JSON.parse(fs.readFileSync(DATA, 'utf8')); } catch {}
-let dirty = false; const save = () => { dirty = true; };
-setInterval(() => { if (dirty) { dirty = false; fs.writeFileSync(DATA + '.tmp', JSON.stringify(db)); fs.renameSync(DATA + '.tmp', DATA); } }, 2000);
 
 const app = express(); app.use(express.static(path.join(__dirname, 'public')));
-app.get('/health', (q, r) => r.json({ ok: true, online: io.engine.clientsCount }));
+app.get('/game.js', (q, r) => r.sendFile(path.join(__dirname, 'game.js'))); // shared care rules for the client
+app.get('/health', (q, r) => r.json({ ok: true, online: io.engine.clientsCount, rooms: rooms.size }));
 const server = http.createServer(app), io = new Server(server, { transports: ['websocket'], perMessageDeflate: false });
-const plaza = new Map(); // socketId -> {id, x, y, ...look}
-let queue = null;
-const snake = new SnakeLobby(null, results => {
-  for (const r of results) { const p = db.players[r.id]; if (p && !r.left) p.coins += r.coins; } save();
-  for (const r of results) { const so = io.sockets.sockets.get(r.sid); if (so) { so.emit('s:end', results); if (db.players[r.id]) so.emit('state', view(db.players[r.id])); } }
-});
-const raid = new RaidLobby(null, (win, results, diff, hp, max) => {
-  for (const r of results) { const p = db.players[r.id]; if (p && !r.left) p.coins += r.coins; } save();
-  for (const r of results) { const so = io.sockets.sockets.get(r.sid); if (so) { so.emit('r:end', { win, diff, hp, max, results, energy: r.energy, coins: r.coins }); if (db.players[r.id]) so.emit('state', view(db.players[r.id])); } }
-});
-const lobbyGate = (p, cost) => db.players[p.id] ? canPlay(db.players[p.id], cost) : null;
-const lobbyCharge = (players, cost) => players.forEach(p => charge(p.id, cost));
-snake.gate = raid.gate = lobbyGate; snake.charge = raid.charge = lobbyCharge;
-const matches = new Map(); // socketId -> match
 
-function getPlayer(user) {
-  let pl = db.players[user.id];
-  if (!pl) { pl = db.players[user.id] = G.newPlayer(user.id, user.nickname, Date.now()); }
-  pl.nickname = user.nickname; G.update(pl, Date.now()); save(); return pl;
-}
-// ---- energy gate for minigames ----
+const MAX_ROOM = 6, CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // no 0/O, 1/I/L
 const COST = { volley: 15, snake: 15 };
-function canPlay(pl, cost) {
-  G.update(pl, Date.now()); const p = pl.pet;
+const rooms = new Map(); // code -> room
+const matches = new Map(); // socketId -> match
+const sock = sid => io.sockets.sockets.get(sid);
+const snapOf = s => s && s.snap;
+
+function newCode() { let c; do { c = ''; for (let i = 0; i < 6; i++) c += CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]; } while (rooms.has(c)); return c; }
+const normCode = c => String(c || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
+// give a client its result; also keep the server-side snapshot in step so the gate stays meaningful
+function apply(s, d) { if (!s) return; if (s.snap && d.energy) s.snap.stats.energy = G.clamp(s.snap.stats.energy + d.energy); s.emit('apply', d); }
+function canPlay(s, cost) {
+  const p = snapOf(s); if (!p) return '펫 정보가 없어요';
   if (p.stage === 'dead') return '하늘나라에 간 펫은 놀 수 없어요';
   if (p.sleeping) return '자고 있어요 💤 깨운 뒤에 놀아요';
   if (p.sick) return '아파서 놀 수 없어요. 약을 먹여주세요';
   if (p.stats.energy < cost) return `에너지가 부족해요 (필요: ${cost})`;
   return null;
 }
-function charge(id, cost) { const pl = db.players[id]; if (!pl) return; pl.pet.stats.energy = Math.max(0, pl.pet.stats.energy - cost); save();
-  for (const s of io.sockets.sockets.values()) if (s.user.id === id) s.emit('state', view(pl)); }
-function view(pl) { const { cooldowns, ...pet } = pl.pet; return { ...pl, pet, shop: G.SHOP, cfg: { hatchMs: G.CFG.hatchMs }, now: Date.now() }; }
+const look = s => { const p = s.snap; return { nickname: p.nickname, stage: p.stage, char: p.char, style: 0, wearing: p.wearing, sick: p.sick, sleeping: p.sleeping }; };
+
+function makeRoom() {
+  const code = newCode(), room = { code, members: new Map(), queue: null };
+  room.snake = new SnakeLobby(io, results => {
+    for (const r of results) { const so = sock(r.sid); if (so) { if (!r.left && r.coins) apply(so, { coins: r.coins }); so.emit('s:end', results); } }
+  }, 'snake:' + code);
+  room.raid = new RaidLobby(io, (win, results, diff, hp, max) => {
+    for (const r of results) { const so = sock(r.sid); if (so) { if (!r.left && r.coins) apply(so, { coins: r.coins }); so.emit('r:end', { win, diff, hp, max, results, energy: r.energy, coins: r.coins }); } }
+  }, 'raid:' + code);
+  room.snake.gate = room.raid.gate = (p, cost) => { const so = sock(p.sid); return so ? canPlay(so, cost) : '연결이 끊겼어요'; };
+  room.snake.charge = room.raid.charge = (players, cost) => players.forEach(p => apply(sock(p.sid), { energy: -cost }));
+  rooms.set(code, room); return room;
+}
+function enterRoom(socket, room) {
+  if (room.members.size >= MAX_ROOM) return `방이 가득 찼어요 (최대 ${MAX_ROOM}명)`;
+  leaveRoom(socket);
+  socket.roomCode = room.code; socket.join('room:' + room.code);
+  room.members.set(socket.id, { sid: socket.id, x: 100 + Math.random() * 280, y: 180 + Math.random() * 80, inPlaza: false, ...look(socket) });
+  return null;
+}
+function leaveRoom(socket) {
+  const room = rooms.get(socket.roomCode); if (!room) return;
+  room.raid.leave(socket.id); room.snake.leave(socket.id);
+  if (room.queue && room.queue.socket.id === socket.id) room.queue = null;
+  room.members.delete(socket.id); socket.leave('room:' + room.code); socket.roomCode = null;
+  if (!room.members.size) rooms.delete(room.code); // empty rooms disappear
+}
 
 io.use((socket, next) => { const u = resolvePlayer(socket.handshake); if (!u) return next(new Error('auth')); socket.user = u; next(); });
 io.on('connection', socket => {
-  const pl = () => getPlayer(socket.user);
-  socket.emit('state', view(pl()));
-  socket.on('act', ({ action, arg } = {}, cb) => {
-    const p = pl(); const r = G.act(p, action, arg, Date.now()); save();
-    const res = typeof r === 'string' ? { ok: false, msg: r } : { ok: true, ...r };
-    socket.emit('state', view(p)); cb && cb(res);
-  });
-  socket.on('sync', () => socket.emit('state', view(pl())));
-  // plaza
-  socket.on('plaza:join', () => {
-    const p = pl(); socket.join('plaza');
-    plaza.set(socket.id, { sid: socket.id, x: 100 + Math.random() * 280, y: 180 + Math.random() * 80, ...G.publicPet(p) });
-  });
-  socket.on('plaza:move', ({ x, y } = {}) => { const e = plaza.get(socket.id); if (e && isFinite(x) && isFinite(y)) { e.x = Math.max(0, Math.min(480, x)); e.y = Math.max(140, Math.min(300, y)); } });
-  socket.on('plaza:chat', t => { const e = plaza.get(socket.id); if (e) { e.chat = String(t).slice(0, 40); e.chatAt = Date.now(); } });
-  socket.on('plaza:leave', () => { plaza.delete(socket.id); socket.leave('plaza'); });
-  // volleyball
-  const look = () => { const p = pl(); return { ...G.publicPet(p) }; };
-  socket.on('v:queue', () => {
-    { const e = canPlay(pl(), COST.volley); if (e) return socket.emit('toast', e); }
+  const room = () => rooms.get(socket.roomCode);
+  const need = (cb) => { const r = room(); if (!r) { socket.emit('toast', '먼저 방에 들어가세요'); cb && cb({ ok: false }); } return r; };
+  socket.on('snap', s => { socket.snap = G.sanitizeSnap(s, socket.user.nickname); const r = room(), e = r && r.members.get(socket.id); if (e) Object.assign(e, look(socket)); });
+  socket.on('room:create', (cb) => { if (typeof cb !== 'function') return; if (!socket.snap) return cb({ ok: false, msg: '펫 정보가 없어요' });
+    const r = makeRoom(); enterRoom(socket, r); cb({ ok: true, code: r.code, count: r.members.size }); });
+  socket.on('room:join', (code, cb) => { if (typeof cb !== 'function') return; if (!socket.snap) return cb({ ok: false, msg: '펫 정보가 없어요' });
+    const c = normCode(code); if (c === socket.roomCode) return cb({ ok: true, code: c, count: room().members.size });
+    const r = rooms.get(c); if (!r) return cb({ ok: false, msg: '그런 방이 없어요. 코드를 확인해주세요' });
+    const e = enterRoom(socket, r); cb(e ? { ok: false, msg: e } : { ok: true, code: c, count: r.members.size }); });
+  socket.on('room:leave', () => leaveRoom(socket));
+  // plaza (per room)
+  socket.on('plaza:join', () => { const r = need(); const e = r && r.members.get(socket.id); if (e) e.inPlaza = true; });
+  socket.on('plaza:move', ({ x, y } = {}) => { const r = room(), e = r && r.members.get(socket.id); if (e && isFinite(x) && isFinite(y)) { e.x = Math.max(0, Math.min(480, x)); e.y = Math.max(140, Math.min(300, y)); } });
+  socket.on('plaza:chat', t => { const r = room(), e = r && r.members.get(socket.id); if (e) { e.chat = String(t).slice(0, 40); e.chatAt = Date.now(); } });
+  socket.on('plaza:leave', () => { const r = room(), e = r && r.members.get(socket.id); if (e) e.inPlaza = false; });
+  // volleyball (queue per room)
+  socket.on('v:queue', () => { const r = need(); if (!r) return;
+    { const e = canPlay(socket, COST.volley); if (e) return socket.emit('toast', e); }
     if (matches.has(socket.id)) return;
-    if (queue && queue.socket.id !== socket.id && queue.socket.connected) {
-      const a = queue; queue = null;
-      const ea = canPlay(db.players[a.socket.user.id], COST.volley); if (ea) { a.socket.emit('toast', ea); a.socket.emit('v:kicked', ea); queue = { socket, look: look() }; return socket.emit('v:waiting'); }
-      startMatch([{ socket: a.socket, socketId: a.socket.id, id: a.socket.user.id, look: a.look }, { socket, socketId: socket.id, id: socket.user.id, look: look() }], false);
-    } else { queue = { socket, look: look() }; socket.emit('v:waiting'); }
+    const q = r.queue;
+    if (q && q.socket.id !== socket.id && q.socket.connected && q.socket.roomCode === r.code) {
+      r.queue = null;
+      const ea = canPlay(q.socket, COST.volley); if (ea) { q.socket.emit('toast', ea); q.socket.emit('v:kicked', ea); r.queue = { socket }; return socket.emit('v:waiting'); }
+      startMatch([{ socket: q.socket, socketId: q.socket.id, look: look(q.socket) }, { socket, socketId: socket.id, look: look(socket) }], false);
+    } else { r.queue = { socket }; socket.emit('v:waiting'); }
   });
-  socket.on('v:cancel', () => { if (queue && queue.socket.id === socket.id) queue = null; });
+  socket.on('v:cancel', () => { const r = room(); if (r && r.queue && r.queue.socket.id === socket.id) r.queue = null; });
   socket.on('v:practice', () => { if (matches.has(socket.id)) return;
-    { const e = canPlay(pl(), COST.volley); if (e) return socket.emit('toast', e); } if (queue && queue.socket.id === socket.id) queue = null;
-    startMatch([{ socket, socketId: socket.id, id: socket.user.id, look: look() }, { socketId: null, id: 'ai', look: { nickname: '연습봇', stage: 'child', char: 1 + Math.floor(Math.random() * 7), style: 3, wearing: {} } }], true); });
+    { const e = canPlay(socket, COST.volley); if (e) return socket.emit('toast', e); } const r = room(); if (r && r.queue && r.queue.socket.id === socket.id) r.queue = null;
+    startMatch([{ socket, socketId: socket.id, look: look(socket) }, { socketId: null, look: { nickname: '연습봇', stage: 'child', char: 1 + Math.floor(Math.random() * 7), style: 3, wearing: {} } }], true); });
   socket.on('v:input', inp => { const m = matches.get(socket.id); if (m && inp) m.setInput(socket.id, inp); });
   socket.on('v:leave', () => { const m = matches.get(socket.id); if (m) m.leave(socket.id); });
-  socket.on('s:join', cb => { { const e = canPlay(pl(), COST.snake); if (e) { socket.emit('toast', e); return socket.emit('s:kicked', e); } } const e = snake.join(socket, look()); if (e && e !== 'already') socket.emit('toast', e); else snake.emitLobby(); });
-  socket.on('s:leave', () => snake.leave(socket.id));
-  socket.on('s:start', () => { const e = snake.start(socket.id); if (e) socket.emit('toast', e); });
-  socket.on('s:dir', d => snake.setDir(socket.id, d));
-  socket.on('r:join', () => { { const e = canPlay(pl(), raid.cost()); if (e) { socket.emit('toast', e); return socket.emit('r:kicked', e); } } const e = raid.join(socket, look()); if (e && e !== 'already') socket.emit('toast', e); else raid.emitLobby(); });
-  socket.on('r:diff', d => { const e = raid.setDiff(socket.id, d); if (e) socket.emit('toast', e); });
-  socket.on('r:leave', () => raid.leave(socket.id));
-  socket.on('r:start', () => { const e = raid.start(socket.id); if (e) socket.emit('toast', e); });
-  socket.on('r:input', inp => raid.input(socket.id, inp));
-  socket.on('r:act', k => raid.action(socket.id, k));
-  socket.on('disconnect', () => { raid.leave(socket.id); snake.leave(socket.id); plaza.delete(socket.id); if (queue && queue.socket.id === socket.id) queue = null; const m = matches.get(socket.id); if (m) m.leave(socket.id); });
+  // snake + raid (one lobby each per room)
+  const joinLobby = (lob, cost, kick) => { const r = need(); if (!r) return socket.emit(kick, '먼저 방에 들어가세요');
+    const e = canPlay(socket, cost); if (e) { socket.emit('toast', e); return socket.emit(kick, e); }
+    const j = r[lob].join(socket, { ...look(socket), id: socket.user.id }); if (j && j !== 'already') socket.emit('toast', j); else r[lob].emitLobby(); };
+  socket.on('s:join', () => joinLobby('snake', COST.snake, 's:kicked'));
+  socket.on('s:leave', () => { const r = room(); r && r.snake.leave(socket.id); });
+  socket.on('s:start', () => { const r = room(); const e = r ? r.snake.start(socket.id) : '방이 없어요'; if (e) socket.emit('toast', e); });
+  socket.on('s:dir', d => { const r = room(); r && r.snake.setDir(socket.id, d); });
+  socket.on('r:join', () => { const r = room(); joinLobby('raid', r ? r.raid.cost() : 0, 'r:kicked'); });
+  socket.on('r:diff', d => { const r = room(); const e = r ? r.raid.setDiff(socket.id, d) : '방이 없어요'; if (e) socket.emit('toast', e); });
+  socket.on('r:leave', () => { const r = room(); r && r.raid.leave(socket.id); });
+  socket.on('r:start', () => { const r = room(); const e = r ? r.raid.start(socket.id) : '방이 없어요'; if (e) socket.emit('toast', e); });
+  socket.on('r:input', inp => { const r = room(); r && r.raid.input(socket.id, inp); });
+  socket.on('r:act', k => { const r = room(); r && r.raid.action(socket.id, k); });
+  socket.on('disconnect', () => { const m = matches.get(socket.id); if (m) m.leave(socket.id); leaveRoom(socket); });
 });
 let mid = 0;
 function startMatch(players, practice) {
-  const room = 'm' + (++mid);
-  for (const p of players) if (p.socketId) charge(p.id, COST.volley);
-  const m = new Match(io, room, players, (m, winner, forfeit) => {
+  const mroom = 'm' + (++mid);
+  for (const p of players) if (p.socket) apply(p.socket, { energy: -COST.volley });
+  const m = new Match(io, mroom, players, (m, winner, forfeit) => {
     const reward = practice ? 10 : 30; const w = players[winner];
-    if (w.socketId && db.players[w.id]) { db.players[w.id].coins += reward; db.players[w.id].wins = (db.players[w.id].wins || 0) + 1; save(); }
     for (const p of players) if (p.socket) {
+      if (p === w) apply(p.socket, { coins: reward, win: 1 });
       p.socket.emit('v:end', { winner, score: m.score, forfeit, reward: p === w ? reward : 0, energy: COST.volley });
-      p.socket.leave(room); matches.delete(p.socketId); if (db.players[p.id]) p.socket.emit('state', view(db.players[p.id]));
+      p.socket.leave(mroom); matches.delete(p.socketId);
     }
   });
-  players.forEach((p, i) => { if (p.socket) { p.socket.join(room); matches.set(p.socketId, m); p.socket.emit('v:start', { side: i, practice, players: players.map(q => q.look) }); } });
+  players.forEach((p, i) => { if (p.socket) { p.socket.join(mroom); matches.set(p.socketId, m); p.socket.emit('v:start', { side: i, practice, players: players.map(q => q.look) }); } });
 }
-snake.io = io; raid.io = io;
-setInterval(() => { const now = Date.now(); io.to('plaza').emit('plaza:state', [...plaza.values()].map(e => ({ ...e, chat: e.chatAt && now - e.chatAt < 5000 ? e.chat : null }))); }, 100);
-// refresh pet looks in plaza periodically
-setInterval(() => { for (const [sid, e] of plaza) { const s = io.sockets.sockets.get(sid); if (s && db.players[s.user.id]) Object.assign(e, G.publicPet(db.players[s.user.id])); } }, 3000);
+setInterval(() => { const now = Date.now();
+  for (const r of rooms.values()) io.to('room:' + r.code).emit('plaza:state', { code: r.code, count: r.members.size, max: MAX_ROOM,
+    pets: [...r.members.values()].filter(e => e.inPlaza).map(e => ({ ...e, chat: e.chatAt && now - e.chatAt < 5000 ? e.chat : null })) }); }, 100);
 const PORT = process.env.PORT || 3456;
 server.listen(PORT, () => console.log('tamagotchi on :' + PORT));
+module.exports = { rooms };

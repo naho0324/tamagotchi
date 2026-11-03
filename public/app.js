@@ -5,16 +5,37 @@ function toast(m) { const t = $('#toast'); t.textContent = m; t.classList.add('s
 function closeModal(id) { $('#' + id).classList.add('hidden'); }
 function show(id) { document.querySelectorAll('.screen').forEach(s => s.classList.toggle('hidden', s.id !== id)); }
 
-// ---- identity (swap for Discord later: just provide auth payload) ----
+// ---- local save: pet, coins and items live in this browser (localStorage) ----
+const SAVE_KEY = 'tg_save', G = window.Game;
+{ const h = +new URLSearchParams(location.search).get('hatch'); if (h > 0) G.CFG.hatchMs = h; } // dev/test: ?hatch=1500
+let myRoom = null;
+function save() { if (S) localStorage.setItem(SAVE_KEY, JSON.stringify(S)); }
+function loadSave(ident) {
+  let p = null; try { p = JSON.parse(localStorage.getItem(SAVE_KEY)); } catch {}
+  if (!validSave(p)) p = G.newPlayer(ident.playerId, ident.nickname, Date.now());
+  p.id = ident.playerId; p.nickname = ident.nickname; return p;
+}
+function validSave(p) { return p && typeof p === 'object' && p.pet && p.pet.stats && typeof p.pet.stage === 'string' && Number.isFinite(p.coins); }
+function tickSim() { if (!S) return; G.update(S, Date.now());
+  if (prevStage === 'egg' && S.pet.stage === 'baby') toast('알이 깨어났어요! 누구일까? 🎉'); prevStage = S.pet.stage; save(); }
+function sendSnap() { if (S && socket && socket.connected) socket.emit('snap', G.snapOf(S)); }
+// backup code = "TG1." + base64(UTF-8 JSON of the save)
+const encodeSave = p => 'TG1.' + btoa(unescape(encodeURIComponent(JSON.stringify(p))));
+function decodeSave(code) { try { const c = String(code).trim().replace(/\s+/g, ''); if (!c.startsWith('TG1.')) return null;
+  const p = JSON.parse(decodeURIComponent(escape(atob(c.slice(4))))); return validSave(p) ? p : null; } catch { return null; } }
+
+// ---- identity (nickname only, stored locally; swap for Discord later: just provide auth payload) ----
 function getIdentity() { const id = localStorage.getItem('tg_pid'), nick = localStorage.getItem('tg_nick'); return id && nick ? { playerId: id, nickname: nick } : null; }
 function start() {
   const ident = getIdentity();
   if (!ident) { $('#nick-modal').classList.remove('hidden'); $('#nick').focus(); return; }
+  S = loadSave(ident); prevStage = S.pet.stage; tickSim(); renderHud();
   socket = io({ auth: ident, transports: ['websocket'] });
   socket.on('connect_error', e => toast('연결 실패: ' + e.message));
-  socket.on('state', st => { S = st;
-    if (prevStage === 'egg' && st.pet.stage === 'baby') toast('알이 깨어났어요! 누구일까? 🎉'); prevStage = st.pet.stage;
-    clockSkew = st.now - Date.now(); renderHud(); });
+  socket.on('connect', () => { sendSnap(); if (myRoom) socket.emit('room:join', myRoom, r => { if (!r.ok) { myRoom = null; toast('방이 사라졌어요'); if (!$('#home').classList.contains('hidden')) return; show('home'); } }); });
+  // minigame results from the server, applied to the local save
+  socket.on('apply', d => { if (!S) return; tickSim(); if (d.coins) S.coins += Math.max(0, Math.min(500, d.coins | 0));
+    if (d.energy) S.pet.stats.energy = G.clamp(S.pet.stats.energy + Math.max(-100, Math.min(100, +d.energy || 0))); if (d.win) S.wins = (S.wins || 0) + 1; save(); renderHud(); });
   bindSocket();
 }
 $('#nick-ok').onclick = () => {
@@ -31,13 +52,13 @@ function renderHud() {
   $('#coins').textContent = S.coins;
   for (const k of ['hunger', 'happy', 'energy', 'clean']) { const v = S.pet.stats[k], el = $('#b-' + k); el.style.width = v + '%'; el.classList.toggle('low', v < 25 && !['egg','dead'].includes(S.pet.stage)); }
   const p = S.pet; let st = `${S.nickname}의 펫 · ${STAGE_KO[p.stage]}`;
-  if (p.stage === 'egg') { const left = Math.max(0, Math.ceil((p.bornAt + S.cfg.hatchMs - (Date.now() + clockSkew)) / 1000)); st += ` · 부화까지 ${left}초`; }
+  if (p.stage === 'egg') { const left = Math.max(0, Math.ceil((p.bornAt + G.CFG.hatchMs - Date.now()) / 1000)); st += ` · 부화까지 ${left}초`; }
   if (p.sick) st += ' · 아파요! 약이 필요해요'; if (p.sleeping) st += ' · 자는 중'; if (p.stage === 'dead') st += ' · 화면을 눌러 다시 시작';
   $('#status').textContent = st;
   if (!$('#shop-modal').classList.contains('hidden')) renderShop();
 }
-setInterval(() => { renderHud(); if (S && S.pet.stage === 'egg' && Date.now() + clockSkew > S.pet.bornAt + S.cfg.hatchMs + 500) socket.emit('sync'); }, 1000);
-setInterval(() => socket && socket.connected && socket.emit('sync'), 30000);
+setInterval(() => { tickSim(); renderHud(); }, 1000);
+setInterval(sendSnap, 5000);
 const BG = new Image(); BG.src = 'assets/room.jpg';
 const roomCv = $('#room'), rctx = roomCv.getContext('2d'); rctx.imageSmoothingEnabled = false;
 let fx = [];
@@ -53,40 +74,46 @@ function drawRoom(t) {
   rctx.globalAlpha = 1;
 }
 const EMO = { feed: '🍚', play: '💗', wash: '🫧', sleep: '💤', use: '✨' };
-// Optimistic local prediction; server state (sent right after) is authoritative and overwrites it.
-const OPT_MSG = { feed: '냠냠! 배불러요', play: '신나요!', wash: '뽀득뽀득 깨끗해요' };
-function predict(action, arg) {
-  if (!S) return false; const p = S.pet, st = p.stats, alive = !['egg', 'dead'].includes(p.stage), c = v => Math.max(0, Math.min(100, v));
-  if (['feed', 'play', 'sleep', 'wash'].includes(action) && !alive) return false;
-  if (action === 'feed' && !p.sleeping) st.hunger = c(st.hunger + 25);
-  else if (action === 'play' && !p.sleeping && st.energy >= 10) { st.happy = c(st.happy + 20); st.energy = c(st.energy - 8); st.hunger = c(st.hunger - 3); }
-  else if (action === 'wash') st.clean = 100;
-  else if (action === 'sleep') p.sleeping = !p.sleeping;
-  else if (action === 'buy' && S.shop[arg] && S.coins >= S.shop[arg].price) { S.coins -= S.shop[arg].price; if (S.shop[arg].type === 'consumable') S.inventory[arg] = (S.inventory[arg] || 0) + 1; else if (!S.owned.includes(arg)) S.owned.push(arg); }
-  else if (action === 'equip' && S.shop[arg]) { const slot = S.shop[arg].type === 'hat' ? 'hat' : 'clothes'; S.wearing[slot] = S.wearing[slot] === arg ? null : arg; }
-  else if (action === 'use' && S.inventory[arg] > 0) { S.inventory[arg]--; if (arg === 'snack') { st.hunger = c(st.hunger + 40); st.happy = c(st.happy + 10); } else p.sick = false; }
-  else return false;
-  return true;
-}
+// care actions + shop run locally with the shared rules (game.js)
 function act(action, arg) {
-  const ok = predict(action, arg);
-  if (ok) { renderHud(); if (EMO[action]) for (let i = 0; i < 3; i++) fx.push({ e: EMO[action], x: 200 + Math.random() * 80, y: 140 + Math.random() * 30, t0: performance.now() + i * 120 }); }
-  const t0 = performance.now();
-  socket.emit('act', { action, arg }, r => {
-    if (!r.ok || !ok || r.coins || performance.now() - t0 > 400) toast(r.msg + (r.coins ? ` (+${r.coins}코인)` : ''));
-  });
-  if (ok && OPT_MSG[action]) toast(OPT_MSG[action]);
+  if (!S) return; const r = G.act(S, action, arg, Date.now()); save(); renderHud(); sendSnap();
+  if (typeof r === 'string') return toast(r);
+  if (EMO[action]) for (let i = 0; i < 3; i++) fx.push({ e: EMO[action], x: 200 + Math.random() * 80, y: 140 + Math.random() * 30, t0: performance.now() + i * 120 });
+  if (action === 'restart') prevStage = 'egg';
+  toast(r.msg + (r.coins ? ` (+${r.coins}코인)` : ''));
 }
+// ---- BACKUP ----
+function openBackup() { $('#bk-export').value = encodeSave(S); $('#bk-import').value = ''; $('#bk-confirm').classList.add('hidden'); $('#backup-modal').classList.remove('hidden'); }
+async function copyText(t) { try { await navigator.clipboard.writeText(t); toast('복사했어요!'); } catch { toast('길게 눌러 직접 복사해주세요'); } }
+$('#backup-btn').onclick = openBackup;
+$('#bk-copy').onclick = () => { $('#bk-export').select(); copyText($('#bk-export').value); };
+let pendingImport = null;
+$('#bk-load').onclick = () => { const p = decodeSave($('#bk-import').value); if (!p) return toast('백업 코드가 올바르지 않아요');
+  pendingImport = p; $('#bk-confirm-msg').textContent = `"${p.nickname}"의 ${STAGE_KO[p.pet.stage] || ''} 펫 · 코인 ${p.coins}개로 덮어써요. 지금 펫은 사라져요! 계속할까요?`;
+  $('#bk-confirm').classList.remove('hidden'); };
+$('#bk-no').onclick = () => { pendingImport = null; $('#bk-confirm').classList.add('hidden'); };
+$('#bk-yes').onclick = () => { if (!pendingImport) return; const p = pendingImport; pendingImport = null;
+  p.id = localStorage.getItem('tg_pid'); localStorage.setItem('tg_nick', String(p.nickname || S.nickname).slice(0, 12)); p.nickname = localStorage.getItem('tg_nick');
+  S = p; prevStage = S.pet.stage; tickSim(); renderHud(); sendSnap(); closeModal('backup-modal'); toast('불러오기 완료!'); };
+// ---- ROOMS ----
+function openPlazaOrRooms() { if (myRoom) return enterPlaza(); $('#room-code').value = ''; show('rooms'); }
+function joined(r) { if (!r.ok) return toast(r.msg || '실패했어요'); myRoom = r.code; enterPlaza(); }
+$('#room-create').onclick = () => { sendSnap(); socket.emit('room:create', joined); };
+$('#room-join').onclick = () => { const c = $('#room-code').value.trim(); if (!c) return toast('방 코드를 입력해주세요'); sendSnap(); socket.emit('room:join', c, joined); };
+$('#room-code').onkeydown = e => { if (e.key === 'Enter') $('#room-join').click(); };
+$('#rooms-back').onclick = () => show('home');
+$('#room-copy').onclick = () => myRoom && copyText(myRoom);
+$('#room-leave').onclick = () => { socket.emit('v:cancel'); socket.emit('room:leave'); myRoom = null; inPlaza = false; plazaList = []; show('home'); toast('방에서 나왔어요'); };
 document.querySelectorAll('.buttons button').forEach(b => b.onclick = () => {
   const a = b.dataset.act;
   if (a === 'shop') { renderShop(); $('#shop-modal').classList.remove('hidden'); }
-  else if (a === 'plaza') enterPlaza();
+  else if (a === 'plaza') openPlazaOrRooms();
   else act(a);
 });
 roomCv.onclick = () => { if (S && S.pet.stage === 'dead') act('restart'); };
 function renderShop() {
   const sl = $('#shop-list'); sl.innerHTML = '';
-  for (const [k, it] of Object.entries(S.shop)) {
+  for (const [k, it] of Object.entries(G.SHOP)) {
     const owned = S.owned.includes(k), d = document.createElement('div'); d.className = 'item';
     d.innerHTML = `<span>${it.name} <small>🪙${it.price}</small></span>`;
     const b = document.createElement('button'); b.className = 'small';
@@ -95,20 +122,20 @@ function renderShop() {
     d.appendChild(b); sl.appendChild(d);
   }
   const il = $('#inv-list'); il.innerHTML = '';
-  for (const k of ['snack', 'medicine']) { const d = document.createElement('div'); d.className = 'item'; d.innerHTML = `<span>${S.shop[k].name} x${S.inventory[k] || 0}</span>`;
+  for (const k of ['snack', 'medicine']) { const d = document.createElement('div'); d.className = 'item'; d.innerHTML = `<span>${G.SHOP[k].name} x${S.inventory[k] || 0}</span>`;
     const b = document.createElement('button'); b.className = 'small'; b.textContent = '사용'; b.onclick = () => act('use', k); d.appendChild(b); il.appendChild(d); }
 }
 
 // ---- PLAZA ----
 const pcv = $('#plazaCv'), pctx = pcv.getContext('2d'); pctx.imageSmoothingEnabled = false;
-let plazaList = [], plazaDisp = {}, me = { x: 240, y: 220, tx: 240, ty: 220 }, inPlaza = false, lastMove = 0;
-function enterPlaza() { show('plaza'); inPlaza = true; socket.emit('plaza:join'); $('#match-status').textContent = '화면을 눌러 이동해요'; }
+let plazaMeta = {}, plazaList = [], plazaDisp = {}, me = { x: 240, y: 220, tx: 240, ty: 220 }, inPlaza = false, lastMove = 0;
+function enterPlaza() { if (!myRoom) return show('rooms'); show('plaza'); if (!inPlaza) { me.x = me.tx = 80 + Math.random() * 320; me.y = me.ty = 170 + Math.random() * 90; } inPlaza = true; sendSnap(); socket.emit('plaza:join'); $('#room-code-show').textContent = myRoom; $('#match-status').textContent = '화면을 눌러 이동해요'; }
 $('#plaza-back').onclick = () => { socket.emit('plaza:leave'); socket.emit('v:cancel'); inPlaza = false; show('home'); };
 pcv.addEventListener('pointerdown', e => { const r = pcv.getBoundingClientRect(); me.tx = (e.clientX - r.left) / r.width * 480; me.ty = Math.max(150, (e.clientY - r.top) / r.height * 300); });
 const sendChat = () => { const v = $('#chat').value.trim(); if (v) { socket.emit('plaza:chat', v); $('#chat').value = ''; } };
 $('#chat-send').onclick = sendChat; $('#chat').onkeydown = e => { if (e.key === 'Enter') sendChat(); };
-$('#match').onclick = () => { socket.emit('v:queue'); };
-$('#practice').onclick = () => socket.emit('v:practice');
+$('#match').onclick = () => { sendSnap(); socket.emit('v:queue'); };
+$('#practice').onclick = () => { sendSnap(); socket.emit('v:practice'); };
 function drawPlaza(t) {
   // background: sky, grass, path
   pctx.fillStyle = '#bfe3f7'; pctx.fillRect(0, 0, 480, 300);
@@ -142,7 +169,7 @@ function drawPlaza(t) {
       pctx.fillStyle = '#1d2557'; pctx.fillText(e.chat, p.x, cy + 13); }
     pctx.textAlign = 'left';
   }
-  $('#plaza-count').textContent = `접속 ${plazaList.length}명`;
+  $('#plaza-count').textContent = `${plazaMeta.count || plazaList.length}/${plazaMeta.max || 6}명`;
 }
 
 // ---- VOLLEY ----
@@ -197,7 +224,7 @@ function drawVolley(t) {
 // ---- SNAKE ----
 const scv = $('#sCv'), sctx = scv.getContext('2d'); sctx.imageSmoothingEnabled = false;
 let SN = null, snLobby = null; const CELL = 16;
-$('#snake-btn').onclick = () => { socket.emit('plaza:leave'); socket.emit('v:cancel'); show('snake'); SN = null; $('#sCv').classList.add('hidden'); $('#s-lobby').classList.remove('hidden'); socket.emit('s:join'); };
+$('#snake-btn').onclick = () => { socket.emit('plaza:leave'); socket.emit('v:cancel'); show('snake'); SN = null; $('#sCv').classList.add('hidden'); $('#s-lobby').classList.remove('hidden'); sendSnap(); socket.emit('s:join'); };
 $('#s-back').onclick = () => { socket.emit('s:leave'); SN = null; enterPlaza(); };
 $('#s-start').onclick = () => socket.emit('s:start');
 const SKEY = { ArrowUp: 'up', w: 'up', W: 'up', ArrowDown: 'down', s: 'down', S: 'down', ArrowLeft: 'left', a: 'left', A: 'left', ArrowRight: 'right', d: 'right', D: 'right' };
@@ -260,7 +287,7 @@ let atkHold = null;
 $('#r-atk').addEventListener('pointerdown', e => { e.preventDefault(); rAct('atk'); clearInterval(atkHold); atkHold = setInterval(() => rAct('atk'), 320); });
 for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) $('#r-atk').addEventListener(ev, () => clearInterval(atkHold));
 $('#r-skill').addEventListener('pointerdown', e => { e.preventDefault(); rAct('skill'); });
-$('#raid-btn').onclick = () => { socket.emit('plaza:leave'); socket.emit('v:cancel'); show('raid'); RD = null; rcv.classList.add('hidden'); $('#raid .raid-act').classList.add('hidden'); $('#r-lobby').classList.remove('hidden'); socket.emit('r:join'); };
+$('#raid-btn').onclick = () => { socket.emit('plaza:leave'); socket.emit('v:cancel'); show('raid'); RD = null; rcv.classList.add('hidden'); $('#raid .raid-act').classList.add('hidden'); $('#r-lobby').classList.remove('hidden'); sendSnap(); socket.emit('r:join'); };
 $('#r-back').onclick = () => { socket.emit('r:leave'); RD = null; enterPlaza(); };
 $('#r-start').onclick = () => socket.emit('r:start');
 const DIFF_KO = { easy: '쉬움', normal: '보통', hard: '어려움' };
@@ -269,7 +296,7 @@ function renderRaidLobby(l) {
   document.querySelectorAll('#r-diff button').forEach(b => { b.classList.toggle('sel', b.dataset.d === l.diff); b.disabled = l.host !== socket.id; });
   const pl = $('#r-players'); pl.innerHTML = '';
   l.players.forEach(p => { const d = document.createElement('div'); d.className = 'item';
-    d.innerHTML = `<span>${p.nickname}${p.sid === socket.id ? ' (나)' : ''} <small>${STAGE_KO[p.stage] || ''}</small></span><span>${p.sid === l.host ? '👑 방장' : ''}</span>`; pl.appendChild(d); });
+    d.innerHTML = `<span>${p.nickname}${p.sid === socket.id ? ' (나)' : ''} <small>${STAGE_KO[p.stage] || ''} ⚔️ x${p.pow}</small></span><span>${p.sid === l.host ? '👑 방장' : ''}</span>`; pl.appendChild(d); });
   $('#r-start').classList.toggle('hidden', l.host !== socket.id || l.state !== 'lobby');
   $('#r-info').textContent = l.state === 'playing' ? '레이드 진행 중...' : l.countdown ? `${l.countdown}초 후 자동 시작!` : (l.players.length < 2 ? '동료를 기다리는 중 · 혼자서도 도전할 수 있어요' : '') + ` · 난이도: ${DIFF_KO[l.diff] || '보통'} (⚡${l.cost})` + (l.host === socket.id ? ' (방장이 선택)' : ' (방장이 고르는 중)');
 }
@@ -373,7 +400,7 @@ function bindSocket() {
     $('#end-title').textContent = me && me.rank === 1 ? (res.length > 1 ? '🏆 1등!' : '🐍 게임 끝!') : `${me ? me.rank : '-'}등`;
     $('#end-msg').textContent = res.map(r => `${r.rank}등 ${r.nickname} (길이 ${r.length}) +${r.coins}`).join(' / ') + (me ? ` · 나: +${me.coins} 코인, 에너지 -${me.energy || 0}` : '');
     $('#end-modal').classList.remove('hidden'); });
-  socket.on('plaza:state', l => plazaList = l);
+  socket.on('plaza:state', l => { if (l.code !== myRoom) return; plazaMeta = l; plazaList = l.pets; });
   socket.on('v:waiting', () => $('#match-status').textContent = '상대를 찾는 중... (다른 사람이 매칭을 누르면 시작!)');
   socket.on('v:start', d => { V = { ...d, state: null, buf: [], acc: 0, lastT: 0, pred: { x: d.side === 0 ? 90 : 390, y: 244, vy: 0 } }; Object.keys(keys).forEach(k => keys[k] = false);
     $('#v-names').textContent = `${d.players[0].nickname} vs ${d.players[1].nickname}`; show('volley'); });

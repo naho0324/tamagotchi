@@ -1,7 +1,7 @@
 // Server-authoritative boss raid (1-6 players) vs 몽꾸. One shared lobby at a time.
 const W = 480, H = 300, TICK = 1000 / 30, TIME_LIMIT = +process.env.RAID_TIME || 120, AUTO_START = 15, MAX = 6;
 const GY0 = 205, GY1 = 285, SPEED = 3.2, PHP = 100;
-const POWER = { egg: 1, baby: 1, child: 1.2, adult: 1.4 };
+const { POWER } = require('./game'); // egg x0.5, baby x1, child x1.5, adult x2.2
 const ATK_CD = 9, SKILL_CD = 150, ATK_DMG = 6, SKILL_DMG = 36; // ticks / dmg
 const BOSS_Y = 150, BOSS_HW = 46, BOSS_TOP = 30; // boss feet at y=BOSS_Y, hitbox
 const DIFF = { // hp: boss HP mult, gap: attack interval mult, dmg: damage mult, tele: telegraph mult, enr: enrage threshold
@@ -10,9 +10,9 @@ const DIFF = { // hp: boss HP mult, gap: attack interval mult, dmg: damage mult,
   hard: { name: '어려움', hp: 1.5, gap: 0.8, dmg: 1.3, tele: 0.85, enr: 0.6, move: 1.25, bombs: 1, reward: 120, energy: 30 },
 };
 class RaidLobby {
-  constructor(io, onEnd) { this.io = io; this.onEnd = onEnd; this.room = 'raid'; this.players = []; this.state = 'lobby'; this.countdown = null; this.diff = 'normal'; }
+  constructor(io, onEnd, room = 'raid') { this.io = io; this.onEnd = onEnd; this.room = room; this.players = []; this.state = 'lobby'; this.countdown = null; this.diff = 'normal'; }
   emitLobby() { this.io.to(this.room).emit('r:lobby', { diff: this.diff, cost: this.cost(), state: this.state, countdown: this.countdown, host: this.players[0] && this.players[0].sid,
-    players: this.players.map(p => ({ sid: p.sid, nickname: p.look.nickname, stage: p.look.stage, char: p.look.char })) }); }
+    players: this.players.map(p => ({ sid: p.sid, nickname: p.look.nickname, stage: p.look.stage, char: p.look.char, pow: POWER[p.look.stage] || 1 })) }); }
   setDiff(sid, d) { if (this.state !== 'lobby' || !DIFF[d]) return '바꿀 수 없어요'; if (!this.players[0] || this.players[0].sid !== sid) return '방장만 난이도를 고를 수 있어요';
     this.diff = d; this.emitLobby(); return null; }
   cost() { return DIFF[this.diff].energy; }

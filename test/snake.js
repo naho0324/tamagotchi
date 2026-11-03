@@ -1,12 +1,10 @@
-const { io } = require('socket.io-client');
-const URL = process.env.URL || 'http://localhost:3456';
-const RUN = Date.now().toString(36); let k0 = 0;
-function run(n, hostStart) {
+const { roomOf } = require('./lib');
+async function run(n, hostStart) {
+  const cl = await roomOf(n, `뱀${n}-`);
   return new Promise((res, rej) => {
-    const cl = [...Array(n)].map((_, i) => io(URL, { auth: { playerId: `snaketest-${RUN}-${n}-${i}`, nickname: `뱀${n}-${i}` }, transports: ['websocket'], forceNew: true }));
     let started = false, states = 0, ended = 0, lobbyMax = 0, autoSeen = false;
     cl.forEach((c, i) => {
-      c.on('connect', () => setTimeout(() => c.emit('s:join'), i * 50));
+      setTimeout(() => c.emit('s:join'), i * 50);
       c.on('s:lobby', l => { lobbyMax = Math.max(lobbyMax, l.players.length); if (l.countdown) autoSeen = true;
         if (i === 0 && hostStart && l.players.length === n && l.state === 'lobby' && !started) setTimeout(() => c.emit('s:start'), 100); });
       c.on('s:start', () => { started = true; });

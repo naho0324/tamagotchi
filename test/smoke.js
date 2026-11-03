@@ -1,16 +1,12 @@
-const { io } = require('socket.io-client');
-const URL = process.env.URL || 'http://localhost:3456';
-const mk = (id, n) => io(URL, { auth: { playerId: id, nickname: n }, transports: ['websocket'] });
-const a = mk('testaaaa-' + Date.now(), '테스트A'), b = mk('testbbbb-' + Date.now(), '테스트B');
-let ticks = 0, start = 0, points = 0;
-a.on('state', s => { if (!start++) { console.log('A state stage', s.pet.stage, 'coins', s.coins);
-  a.emit('act', { action: 'buy', arg: 'snack' }, r => console.log('buy:', r));
-  a.emit('plaza:join'); b.emit('plaza:join'); setTimeout(() => { a.emit('v:queue'); setTimeout(() => b.emit('v:queue'), 200); }, 300); } });
-a.on('plaza:state', l => { if (l.length === 2 && !a._p) { a._p = 1; console.log('plaza sees', l.map(e => e.nickname)); } });
-a.on('v:waiting', () => console.log('A waiting'));
-a.on('v:start', d => { console.log('A start side', d.side, d.players.map(p => p.nickname)); });
-b.on('v:start', d => console.log('B start side', d.side));
-a.on('v:state', s => { ticks++; });
-a.on('v:point', p => { points++; console.log('point', p.score); if (points === 2) { console.log('ticks', ticks, '-> B forfeits'); b.emit('v:leave'); } });
-a.on('v:end', d => { console.log('A end', d); if (d.energy !== 15) { console.error('FAIL volley energy'); process.exit(1); } setTimeout(() => process.exit(0), 300); });
-setTimeout(() => { console.log('TIMEOUT'); process.exit(1); }, 40000);
+// Two clients in a room: plaza, volley queue (room-scoped), forfeit, result applied locally.
+const { wait, once, assert, roomOf } = require('./lib');
+(async () => {
+  const [a, b] = await roomOf(2, '테스트'); a.emit('plaza:join'); b.emit('plaza:join'); await wait(300);
+  const st = await once(a, 'plaza:state'); assert(st.pets.map(e => e.nickname).sort().join() === '테스트0,테스트1', 'plaza sees both');
+  a.emit('v:queue'); await once(a, 'v:waiting'); const sa = once(a, 'v:start'), sb = once(b, 'v:start'); b.emit('v:queue');
+  const d = await sa; await sb; assert(d.players.map(p => p.nickname).join() === '테스트0,테스트1', 'volley match started');
+  await wait(300); assert(a.pl.pet.stats.energy === 85 && b.pl.pet.stats.energy === 85, 'both charged 15 energy locally');
+  await wait(1500); b.emit('v:leave'); const e = await once(a, 'v:end'); await wait(200);
+  assert(e.forfeit && e.reward === 30 && e.energy === 15 && a.pl.coins === 60, `A wins by forfeit, coins 30 -> ${a.pl.coins}`);
+  process.exit(0);
+})().catch(e => { console.error('FAIL', e.message); process.exit(1); });

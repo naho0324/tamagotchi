@@ -37,3 +37,8 @@ canvas, img { image-rendering: pixelated; image-rendering: crisp-edges; }
 .diff-row button small { font-size: 11px; opacity: .8; }
 .diff-row button.sel { background: #f7a8c4; box-shadow: inset 0 -3px 0 #c2455a; }
 .diff-row button:disabled:not(.sel) { opacity: .5; cursor: default; }
+
+textarea { width: 100%; box-sizing: border-box; font: 11px monospace; border: 3px solid #1d2557; border-radius: 6px; padding: 6px; word-break: break-all; resize: none; }
+.code-tag { background: #fff5f8; border: 2px solid #1d2557; border-radius: 4px; padding: 0 6px; font-family: Galmuri11, monospace; letter-spacing: 2px; }
+#room-code { text-transform: uppercase; letter-spacing: 3px; }
+.confirm { background: #ffe3ea; border: 3px solid #c2455a; border-radius: 8px; padding: 8px; margin: 8px 0; }

@@ -1,7 +1,8 @@
-// Pet simulation: all state derived from timestamps, simulated in 1-minute steps.
+// Shared care rules (browser + Node). Pet simulation: all state derived from timestamps, simulated in 1-minute steps.
+(function (root) {
 const MIN = 60000;
 const CFG = {
-  hatchMs: +process.env.HATCH_MS || 2 * MIN, childMs: 10 * MIN, adultMs: 30 * MIN,
+  hatchMs: (typeof process !== 'undefined' && process.env && +process.env.HATCH_MS) || 2 * MIN, childMs: 10 * MIN, adultMs: 30 * MIN,
   decay: { hunger: 0.25, happy: 0.2, energy: 0.15, clean: 0.15 }, // per minute
   sleepEnergy: 4, deathZeroMin: 720, sickThreshold: 15,
 };
@@ -89,4 +90,16 @@ function act(player, action, arg, now) {
   return '알 수 없는 행동';
 }
 function publicPet(pl) { return { nickname: pl.nickname, stage: pl.pet.stage, char: pl.pet.char, style: pl.pet.style, wearing: pl.wearing, sick: pl.pet.sick, sleeping: pl.pet.sleeping }; }
-module.exports = { NCHAR, newPlayer, update, act, SHOP, CFG, publicPet };
+const POWER = { egg: 0.5, baby: 1, child: 1.5, adult: 2.2 }; // raid damage multiplier by growth stage
+const STAGES = ['egg', 'baby', 'child', 'adult', 'dead'];
+// Light sanity check of a client-sent pet snapshot (cheating is accepted; this only keeps values in range).
+function sanitizeSnap(s, nickname) {
+  s = s && typeof s === 'object' ? s : {}; const st = s.stats || {}, num = v => clamp(Number.isFinite(+v) ? +v : 0);
+  const w = s.wearing || {}, hat = SHOP[w.hat] && SHOP[w.hat].type === 'hat' ? w.hat : null, clothes = SHOP[w.clothes] && SHOP[w.clothes].type === 'clothes' ? w.clothes : null;
+  return { nickname: String(nickname || s.nickname || '손님').slice(0, 12), char: validChar(s.char) ? +s.char : 1, stage: STAGES.includes(s.stage) ? s.stage : 'egg',
+    stats: { hunger: num(st.hunger), happy: num(st.happy), energy: num(st.energy), clean: num(st.clean) }, sick: !!s.sick, sleeping: !!s.sleeping, wearing: { hat, clothes } };
+}
+function snapOf(player) { const p = player.pet; return { nickname: player.nickname, char: p.char, stage: p.stage, stats: { ...p.stats }, sick: p.sick, sleeping: p.sleeping, wearing: player.wearing }; }
+const api = { NCHAR, MIN, newPlayer, newPet, update, act, SHOP, CFG, POWER, publicPet, sanitizeSnap, snapOf, clamp };
+if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.Game = api;
+})(typeof window !== 'undefined' ? window : globalThis);

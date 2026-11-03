@@ -4,7 +4,7 @@ const COLORS = ['#f27a9a', '#6aa9f2', '#98d67a', '#f2a25c', '#a98be0', '#5cc8c0'
 const DIRS = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
 const SPAWNS = [[4, 4, 'right'], [25, 15, 'left'], [25, 4, 'left'], [4, 15, 'right'], [15, 3, 'down'], [15, 16, 'up']];
 class SnakeLobby {
-  constructor(io, onEnd) { this.io = io; this.onEnd = onEnd; this.room = 'snake'; this.players = []; this.state = 'lobby'; this.countdown = null; }
+  constructor(io, onEnd, room = 'snake') { this.io = io; this.onEnd = onEnd; this.room = room; this.players = []; this.state = 'lobby'; this.countdown = null; }
   emitLobby() { this.io.to(this.room).emit('s:lobby', { state: this.state, countdown: this.countdown, host: this.players[0] && this.players[0].sid,
     players: this.players.map(p => ({ sid: p.sid, nickname: p.look.nickname, color: p.color })) }); }
   cost() { return 15; }
