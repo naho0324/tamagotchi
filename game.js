@@ -93,7 +93,7 @@ function act(player, action, arg, now) {
   const reward = (k, c) => { if (cd('coin_' + k, 15000)) { addCoins(player, c); p.careScore++; return c; } return 0; };
   switch (action) {
     case 'feed': if (!alive) return '알에서 나오면 할 수 있어요';
-      if (p.sleeping) return '자고 있어요 💤'; C('hunger', s.hunger + 25); return { msg: '냠냠! 배불러요', coins: reward('feed', 2) };
+      if (p.sleeping) return '자고 있어요 💤'; C('hunger', s.hunger + 25); return { msg: '냠냠! 배불러요' }; // no coins for feeding (v1.1)
     case 'play': if (!alive) return '알에서 나오면 할 수 있어요'; if (p.sleeping) return '자고 있어요 💤';
       if (s.energy < 10) return '너무 피곤해요...'; C('happy', s.happy + 20); C('energy', s.energy - 8); C('hunger', s.hunger - 3); p.playedAt = now;
       return { msg: '신나요!', coins: reward('play', 3) };
