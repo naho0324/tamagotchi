@@ -12,7 +12,7 @@ async def main():
     async with async_playwright() as p:
         br = await p.chromium.launch()
         ctx, pg = await ctxpage(br, 'shop', save('뽑기', 'adult', 4, coins=900))
-        await pg.click('[data-act=shop]'); await pg.wait_for_timeout(400)
+        await pg.click('[data-act=wardrobe]'); await pg.click('#w-tabs [data-tab=gacha]'); await pg.wait_for_timeout(400)
         await pg.evaluate("document.querySelector('#gacha-btn').scrollIntoView({block:'end'})"); await pg.screenshot(path='test/gacha_shop.png')
         # force a 전설 pull for the reveal shot
         await pg.evaluate("(()=>{const r=Math.random;let n=0;Math.random=()=>(n++<2?0.01:r());})()")
