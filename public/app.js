@@ -117,17 +117,20 @@ document.querySelectorAll('.buttons button').forEach(b => b.onclick = () => {
 });
 roomCv.onclick = () => { if (S && S.pet.stage === 'dead') act('restart'); };
 const icon = (type, key) => `<img class="ico" src="assets/outfits/${S.pet.char}/${S.pet.stage === 'adult' ? 'adult' : 'child'}/${type === 'hair' ? key + '_base' : type === 'acc' ? (key === 'none' ? 'base_base' : 'base_base_' + key) : 'base_' + key}.png" alt="">`;
+const itemIco = k => `<img class="ico it" src="assets/items/${k}.png" alt="">`;
 // 상점 = consumables only; 옷/헤어/머리장식/뽑기 live in 꾸미기 (wardrobe)
 function renderShop() {
   const sl = $('#shop-list'); sl.innerHTML = '<h3>먹을 것 · 약</h3>';
-  for (const [k, it] of Object.entries(G.SHOP)) if (it.type === 'consumable') { const d = document.createElement('div'); d.className = 'item';
-    const price = G.priceOf(S, k); d.innerHTML = `<span>${it.name} <small>🪙${price}${price < it.price ? ' (반값!)' : ''}</small></span>`;
+  for (const [k, it] of Object.entries(G.SHOP)) if (it.type === 'consumable') { const d = document.createElement('div'); d.className = 'item'; d.dataset.item = k;
+    const price = G.priceOf(S, k); d.innerHTML = `<span>${itemIco(k)}<span class="it-txt">${it.name} <small>🪙${price}${price < it.price ? ' (반값!)' : ''}</small><small class="fx">${G.ITEM_FX[k]}</small></span></span>`;
     const b = document.createElement('button'); b.className = 'small'; b.textContent = '구매'; b.onclick = () => act('buy', k); d.appendChild(b); sl.appendChild(d); }
   const go = document.createElement('button'); go.id = 'shop-to-decor'; go.className = 'small b-green'; go.textContent = '👗 옷·머리장식·뽑기는 꾸미기에서!';
   go.onclick = () => { closeModal('shop-modal'); openWardrobe(); }; sl.appendChild(go);
   const il = $('#inv-list'); il.innerHTML = '';
-  for (const k of ['snack', 'medicine']) { const d = document.createElement('div'); d.className = 'item'; d.innerHTML = `<span>${G.SHOP[k].name} x${S.inventory[k] || 0}</span>`;
+  const have = G.CONSUMABLES.filter(k => S.inventory[k] > 0);
+  for (const k of have) { const d = document.createElement('div'); d.className = 'item'; d.dataset.inv = k; d.innerHTML = `<span>${itemIco(k)}${G.SHOP[k].name} x${S.inventory[k]}</span>`;
     const b = document.createElement('button'); b.className = 'small'; b.textContent = '사용'; b.onclick = () => act('use', k); d.appendChild(b); il.appendChild(d); }
+  if (!have.length) il.innerHTML = '<p class="hint">가방이 비었어요</p>';
 }
 function gachaBox() { const R = G.GACHA.rates, gd = document.createElement('div'); gd.className = 'gacha-box';
   gd.innerHTML = `<p class="hint">한 번에 🪙${G.GACHA.cost} · <b class="r-common">일반 ${R.common}%</b> 코인/간식 · <b class="r-rare">희귀 ${R.rare}%</b> 리본/꽃핀 · <b class="r-legend">전설 ${R.legend}%</b> 고양이귀(뽑기 전용)<br>중복이면 코인 환급 (희귀 +${G.GACHA.dupRefund.rare}, 전설 +${G.GACHA.dupRefund.legend}) · ${G.GACHA.pity}번 안에 전설 확정 (지금 ${S.gachaPity || 0}/${G.GACHA.pity})</p>`;

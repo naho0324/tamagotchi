@@ -6,9 +6,16 @@ const CFG = {
   decay: { hunger: 0.25, happy: 0.2, energy: 0.15, clean: 0.15 }, // per minute
   sleepEnergy: 4, deathZeroMin: 720, sickThreshold: 15, sickChance: 0.25, rand: Math.random,
 };
+const ITEM_FX = { snack: '배고픔 +40, 기분 +10', medicine: '병 치료', meal: '배고픔 가득, 기분 +5', drink: '체력 +60 (기분 -5)',
+  soap: '청결 가득, 기분 +15', toy: '기분 +50 (체력 안 써요)', vitamin: '병 치료 + 1시간 동안 안 아파요' };
+const CONSUMABLES = Object.keys(ITEM_FX);
 const SHOP = {
   snack: { name: '간식', price: 10, type: 'consumable' },
   medicine: { name: '약', price: 25, type: 'consumable' },
+  // v1.6 소모품: effect text shown in 상점
+  meal: { name: '도시락', price: 30, type: 'consumable' }, drink: { name: '에너지 드링크', price: 35, type: 'consumable' },
+  soap: { name: '거품비누', price: 15, type: 'consumable' }, toy: { name: '장난감', price: 40, type: 'consumable' },
+  vitamin: { name: '비타민', price: 45, type: 'consumable' },
   hair_pony: { name: '포니테일', price: 80, type: 'hair', key: 'pony' }, hair_bob: { name: '단발', price: 80, type: 'hair', key: 'bob' },
   hair_pigtail: { name: '양갈래', price: 100, type: 'hair', key: 'pigtail' }, hair_afro: { name: '아프로', price: 150, type: 'hair', key: 'afro' },
   outfit_hoodie: { name: '후드티', price: 90, type: 'outfit', key: 'hoodie' }, outfit_stripe: { name: '줄무늬티+청바지', price: 100, type: 'outfit', key: 'stripe' },
@@ -49,6 +56,7 @@ const ownKey = (player, type, key) => key === 'base' || key === 'none' || (playe
 function migrate(player) { // old saves: hat/clothes items are gone -> refund; add hair/outfit (base)
   player.owned = Array.isArray(player.owned) ? player.owned.filter(k => typeof k === 'string') : []; let refund = 0;
   if (!player.inventory || typeof player.inventory !== 'object') player.inventory = { snack: 0, medicine: 0 };
+  for (const k of CONSUMABLES) if (!Number.isInteger(player.inventory[k]) || player.inventory[k] < 0) player.inventory[k] = 0; // v1.6 new 소모품
   player.owned = player.owned.filter(k => { if (OLD_ITEMS[k]) { refund += OLD_ITEMS[k]; return false; } return !!SHOP[k]; });
   if (refund) addCoins(player, refund);
   if (!HAIRS.includes(player.hair) || !ownKey(player, 'hair', player.hair)) player.hair = 'base';
@@ -77,7 +85,7 @@ function stepMinute(p, t) {
   else s.energy = clamp(s.energy - CFG.decay.energy * m, X('energy'));
   const mn = Math.min(s.hunger, s.happy, s.energy, s.clean);
   // low stats make the pet sick with some chance each minute (깔끔쟁이: half the chance)
-  if (mn < CFG.sickThreshold && !p.sick && CFG.rand() < CFG.sickChance * (p.char === 1 ? 0.5 : 1)) p.sick = true;
+  if (mn < CFG.sickThreshold && !p.sick && !((p.immuneUntil || 0) > t) && CFG.rand() < CFG.sickChance * (p.char === 1 ? 0.5 : 1)) p.sick = true;
   if (mn <= 0) p.zeroMin++; else p.zeroMin = Math.max(0, p.zeroMin - 1);
   if (p.zeroMin >= CFG.deathZeroMin) { p.stage = 'dead'; p.sick = false; p.sleeping = false; return; }
   const age = t - p.hatchedAt;
@@ -113,7 +121,13 @@ function act(player, action, arg, now) {
       if (!alive) return '사용할 수 없어요'; if (!player.inventory[arg]) return '아이템이 없어요';
       if (arg === 'snack') { C('hunger', s.hunger + 40); C('happy', s.happy + 10); }
       else if (arg === 'medicine') { if (!p.sick) return '아프지 않아요'; p.sick = false; p.zeroMin = 0; C('happy', s.happy + 5); }
-      else return '알 수 없는 아이템'; player.inventory[arg]--; return { msg: arg === 'snack' ? '간식 최고!' : '병이 나았어요!' };
+      else if (arg === 'meal') { if (p.sleeping) return '자고 있어요 💤'; C('hunger', X('hunger')); C('happy', s.happy + 5); }
+      else if (arg === 'drink') { C('energy', s.energy + 60); C('happy', s.happy - 5); p.sleeping = false; }
+      else if (arg === 'soap') { C('clean', X('clean')); C('happy', s.happy + 15); }
+      else if (arg === 'toy') { if (p.sleeping) return '자고 있어요 💤'; C('happy', s.happy + 50); }
+      else if (arg === 'vitamin') { p.sick = false; p.zeroMin = 0; p.immuneUntil = now + 60 * MIN; }
+      else return '알 수 없는 아이템'; player.inventory[arg]--;
+      return { msg: { snack: '간식 최고!', medicine: '병이 나았어요!', meal: '도시락 냠냠! 배불러요', drink: '기운이 번쩍! ⚡', soap: '거품 목욕 뽀득뽀득 🫧', toy: '장난감 너무 좋아요!', vitamin: '튼튼해졌어요! 1시간 동안 안 아파요' }[arg] };
     }
     case 'buy': {
       const it = SHOP[arg]; if (!it) return '없는 상품'; if (it.gacha) return '뽑기에서만 나와요'; const price = priceOf(player, arg); if (player.coins < price) return '코인이 부족해요';
@@ -165,6 +179,6 @@ function miniCoins(game, score) { score = Math.floor(+score);
   if (game === 'memory') return score >= 8 && score <= 200 ? Math.max(10, Math.min(25, 25 - (score - 8))) : 0; // score = moves (8 = perfect)
   if (game === 'pop') return score >= 0 && score <= MINI.pop.maxScore ? (score < 5 ? 5 : Math.min(25, 10 + Math.floor((score - 5) / 3))) : 0; // score = hearts tapped
   return 0; }
-const api = { MINI, miniCoins, NCHAR, MIN, newPlayer, newPet, update, act, SHOP, CFG, POWER, publicPet, sanitizeSnap, snapOf, clamp, HAIRS, OUTFITS, ACCS, GACHA, RARITY_KO, gacha, TRAITS, COIN_CAP, maxOf, coinCap, raidHpOf, raidAtkOf, addCoins, priceOf, migrate, ownKey };
+const api = { MINI, miniCoins, NCHAR, MIN, newPlayer, newPet, update, act, SHOP, CFG, POWER, publicPet, sanitizeSnap, snapOf, clamp, HAIRS, OUTFITS, ACCS, ITEM_FX, CONSUMABLES, GACHA, RARITY_KO, gacha, TRAITS, COIN_CAP, maxOf, coinCap, raidHpOf, raidAtkOf, addCoins, priceOf, migrate, ownKey };
 if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.Game = api;
 })(typeof window !== 'undefined' ? window : globalThis);
