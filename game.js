@@ -15,8 +15,15 @@ const SHOP = {
   outfit_dress: { name: '원피스', price: 120, type: 'outfit', key: 'dress' }, outfit_hanbok: { name: '한복', price: 180, type: 'outfit', key: 'hanbok' },
   outfit_space: { name: '우주복', price: 250, type: 'outfit', key: 'space' },
   acc_crown: { name: '왕관', price: 300, type: 'acc', key: 'crown' },
+  acc_ribbon: { name: '리본', price: 150, type: 'acc', key: 'ribbon' }, acc_flower: { name: '꽃핀', price: 120, type: 'acc', key: 'flower' },
+  acc_catears: { name: '고양이귀', price: 0, type: 'acc', key: 'catears', gacha: true }, // 뽑기 전용 (not sold)
 };
-const HAIRS = ['base', 'pony', 'bob', 'pigtail', 'afro'], OUTFITS = ['base', 'hoodie', 'stripe', 'dress', 'hanbok', 'space'], ACCS = ['none', 'crown'];
+// v1.5 뽑기 (gacha): 60 coins/pull. 일반 70% (coins/snack), 희귀 25% (리본/꽃핀), 전설 5% (뽑기 전용 고양이귀).
+// Duplicate 희귀 -> +40 coins, duplicate 전설 -> +150 coins. Pity: 전설 guaranteed on the 30th pull without one.
+const GACHA = { cost: 60, pity: 30, rates: { common: 70, rare: 25, legend: 5 }, dupRefund: { rare: 40, legend: 150 },
+  common: [{ coins: 20 }, { coins: 30 }, { coins: 45 }, { snack: 2 }, { medicine: 1 }], rare: ['acc_ribbon', 'acc_flower'], legend: ['acc_catears'] };
+const RARITY_KO = { common: '일반', rare: '희귀', legend: '전설' };
+const HAIRS = ['base', 'pony', 'bob', 'pigtail', 'afro'], OUTFITS = ['base', 'hoodie', 'stripe', 'dress', 'hanbok', 'space'], ACCS = ['none', 'crown', 'ribbon', 'flower', 'catears'];
 const OLD_ITEMS = { hat_ribbon: 40, hat_crown: 80, cloth_blue: 50, cloth_pink: 50 }; // removed items: refunded on migration
 // traits per character (default max is 100 for everything)
 const TRAITS = {
@@ -47,6 +54,7 @@ function migrate(player) { // old saves: hat/clothes items are gone -> refund; a
   if (!HAIRS.includes(player.hair) || !ownKey(player, 'hair', player.hair)) player.hair = 'base';
   if (!OUTFITS.includes(player.outfit) || !ownKey(player, 'outfit', player.outfit)) player.outfit = 'base';
   if (!ACCS.includes(player.acc) || !ownKey(player, 'acc', player.acc)) player.acc = 'none'; // v1.4: head accessory (머리장식)
+  if (!Number.isInteger(player.gachaPity) || player.gachaPity < 0) player.gachaPity = 0; // v1.5: 뽑기 pity counter
   delete player.wearing; }
 const validChar = c => Number.isInteger(+c) && +c >= 1 && +c <= NCHAR;
 function newPet(now, char) {
@@ -55,7 +63,7 @@ function newPet(now, char) {
     careScore: 0, cooldowns: {} };
 }
 function newPlayer(id, nickname, now, char) {
-  const pl = { id, nickname, coins: 30, inventory: { snack: 1, medicine: 0 }, owned: [], hair: 'base', outfit: 'base', acc: 'none', pet: newPet(now, char), wins: 0 };
+  const pl = { id, nickname, coins: 30, inventory: { snack: 1, medicine: 0 }, owned: [], hair: 'base', outfit: 'base', acc: 'none', gachaPity: 0, pet: newPet(now, char), wins: 0 };
   if (pl.pet.char === 4) pl.coins *= 2; return pl;
 }
 function stepMinute(p, t) {
@@ -108,7 +116,7 @@ function act(player, action, arg, now) {
       else return '알 수 없는 아이템'; player.inventory[arg]--; return { msg: arg === 'snack' ? '간식 최고!' : '병이 나았어요!' };
     }
     case 'buy': {
-      const it = SHOP[arg]; if (!it) return '없는 상품'; const price = priceOf(player, arg); if (player.coins < price) return '코인이 부족해요';
+      const it = SHOP[arg]; if (!it) return '없는 상품'; if (it.gacha) return '뽑기에서만 나와요'; const price = priceOf(player, arg); if (player.coins < price) return '코인이 부족해요';
       if (it.type !== 'consumable' && player.owned.includes(arg)) return '이미 가지고 있어요';
       player.coins -= price;
       if (it.type === 'consumable') player.inventory[arg] = (player.inventory[arg] || 0) + 1; else { player.owned.push(arg); player[it.type] = it.key; // auto-wear what you just bought
@@ -120,10 +128,26 @@ function act(player, action, arg, now) {
       if (!list || !list.includes(key)) return '착용할 수 없어요'; if (!ownKey(player, type, key)) return '먼저 구매하세요';
       player[type] = key; return { msg: '갈아입었어요!' };
     }
+    case 'gacha': return gacha(player);
     case 'restart': if (p.stage !== 'dead') return '아직 살아있어요'; player.pet = newPet(now); return { msg: '새 알이 왔어요!' };
   }
   return '알 수 없는 행동';
 }
+function gacha(player, rnd = Math.random) {
+  if ((player.coins || 0) < GACHA.cost) return '코인이 부족해요'; player.coins -= GACHA.cost;
+  player.gachaPity = (Number.isInteger(player.gachaPity) ? player.gachaPity : 0) + 1;
+  const roll = rnd() * 100, pick = a => a[Math.min(a.length - 1, Math.floor(rnd() * a.length))];
+  const rarity = player.gachaPity >= GACHA.pity || roll < GACHA.rates.legend ? 'legend' : roll < GACHA.rates.legend + GACHA.rates.rare ? 'rare' : 'common';
+  if (rarity === 'legend') player.gachaPity = 0;
+  const res = { rarity, rarityKo: RARITY_KO[rarity] };
+  if (rarity === 'common') { const g = pick(GACHA.common);
+    if (g.coins) { addCoins(player, g.coins); Object.assign(res, { name: g.coins + '코인', coins: g.coins }); }
+    else { const k = g.snack ? 'snack' : 'medicine', n = g.snack || g.medicine; player.inventory[k] = (player.inventory[k] || 0) + n; Object.assign(res, { name: SHOP[k].name + ' x' + n, item: k }); }
+  } else { const k = pick(GACHA[rarity]), it = SHOP[k]; Object.assign(res, { name: it.name, item: k, key: it.key });
+    if (player.owned.includes(k)) { const c = GACHA.dupRefund[rarity]; addCoins(player, c); Object.assign(res, { dup: true, coins: c }); }
+    else { player.owned.push(k); player[it.type] = it.key; res.isNew = true; } }
+  res.msg = `[${res.rarityKo}] ${res.name}` + (res.dup ? ` (중복! +${res.coins}코인)` : res.isNew ? ' 획득! 바로 썼어요' : ' 획득!');
+  return res; }
 function publicPet(pl) { return { nickname: pl.nickname, stage: pl.pet.stage, char: pl.pet.char, style: pl.pet.style, hair: pl.hair, outfit: pl.outfit, acc: pl.acc || 'none', sick: pl.pet.sick, sleeping: pl.pet.sleeping }; }
 const POWER = { egg: 0.5, baby: 1, child: 1.5, adult: 2.2 }; // raid damage multiplier by growth stage
 const STAGES = ['egg', 'baby', 'child', 'adult', 'dead'];
@@ -141,6 +165,6 @@ function miniCoins(game, score) { score = Math.floor(+score);
   if (game === 'memory') return score >= 8 && score <= 200 ? Math.max(10, Math.min(25, 25 - (score - 8))) : 0; // score = moves (8 = perfect)
   if (game === 'pop') return score >= 0 && score <= MINI.pop.maxScore ? (score < 5 ? 5 : Math.min(25, 10 + Math.floor((score - 5) / 3))) : 0; // score = hearts tapped
   return 0; }
-const api = { MINI, miniCoins, NCHAR, MIN, newPlayer, newPet, update, act, SHOP, CFG, POWER, publicPet, sanitizeSnap, snapOf, clamp, HAIRS, OUTFITS, ACCS, TRAITS, COIN_CAP, maxOf, coinCap, raidHpOf, raidAtkOf, addCoins, priceOf, migrate, ownKey };
+const api = { MINI, miniCoins, NCHAR, MIN, newPlayer, newPet, update, act, SHOP, CFG, POWER, publicPet, sanitizeSnap, snapOf, clamp, HAIRS, OUTFITS, ACCS, GACHA, RARITY_KO, gacha, TRAITS, COIN_CAP, maxOf, coinCap, raidHpOf, raidAtkOf, addCoins, priceOf, migrate, ownKey };
 if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.Game = api;
 })(typeof window !== 'undefined' ? window : globalThis);

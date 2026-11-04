@@ -121,9 +121,10 @@ function renderShop() {
   const sl = $('#shop-list'); sl.innerHTML = '';
   const row = (k, it) => { const owned = S.owned.includes(k), d = document.createElement('div'), wear = it.type !== 'consumable'; d.className = 'item';
     const price = G.priceOf(S, k);
-    d.innerHTML = `<span>${wear ? icon(it.type, it.key) : ''}${it.name} <small>${wear ? ({ hair: '헤어', outfit: '옷', acc: '머리장식' }[it.type]) + ' · ' : ''}🪙${price}${price < it.price ? ' (반값!)' : ''}</small></span>`;
+    d.innerHTML = `<span>${wear ? icon(it.type, it.key) : ''}${it.name} <small>${wear ? ({ hair: '헤어', outfit: '옷', acc: '머리장식' }[it.type]) + ' · ' : ''}${it.gacha ? '🎰 전설' : '🪙' + price}${price < it.price ? ' (반값!)' : ''}</small></span>`;
     const b = document.createElement('button'); b.className = 'small';
     if (wear && owned) { const on = S[it.type] === it.key; b.textContent = on ? '착용중' : '입기'; b.disabled = on; if (!on) b.onclick = () => act('equip', it.type + ':' + it.key); }
+    else if (it.gacha) { b.textContent = '뽑기 전용'; b.disabled = true; }
     else { b.textContent = '구매'; b.onclick = () => act('buy', k); }
     d.appendChild(b); return d; };
   const h = t => { const e = document.createElement('h3'); e.textContent = t; return e; };
@@ -135,10 +136,27 @@ function renderShop() {
   for (const [k, it] of Object.entries(G.SHOP)) if (it.type === 'outfit') sl.appendChild(row(k, it));
   sl.appendChild(h('머리장식 👑'));
   for (const [k, it] of Object.entries(G.SHOP)) if (it.type === 'acc') sl.appendChild(row(k, it));
+  sl.appendChild(h('뽑기 🎰'));
+  const R = G.GACHA.rates, gd = document.createElement('div'); gd.className = 'gacha-box';
+  gd.innerHTML = `<p class="hint">한 번에 🪙${G.GACHA.cost} · <b class="r-common">일반 ${R.common}%</b> 코인/간식 · <b class="r-rare">희귀 ${R.rare}%</b> 리본/꽃핀 · <b class="r-legend">전설 ${R.legend}%</b> 고양이귀(뽑기 전용)<br>중복이면 코인 환급 (희귀 +${G.GACHA.dupRefund.rare}, 전설 +${G.GACHA.dupRefund.legend}) · ${G.GACHA.pity}번 안에 전설 확정 (지금 ${S.gachaPity || 0}/${G.GACHA.pity})</p>`;
+  const gb = document.createElement('button'); gb.id = 'gacha-btn'; gb.className = 'big b-purple'; gb.textContent = `🎰 뽑기 (🪙${G.GACHA.cost})`; gb.onclick = pullGacha; gd.appendChild(gb); sl.appendChild(gd);
   const il = $('#inv-list'); il.innerHTML = '';
   for (const k of ['snack', 'medicine']) { const d = document.createElement('div'); d.className = 'item'; d.innerHTML = `<span>${G.SHOP[k].name} x${S.inventory[k] || 0}</span>`;
     const b = document.createElement('button'); b.className = 'small'; b.textContent = '사용'; b.onclick = () => act('use', k); d.appendChild(b); il.appendChild(d); }
 }
+// ---- GACHA (뽑기): capsule shake -> rarity flash -> prize reveal ----
+function pullGacha() {
+  if (!S) return; const r = G.act(S, 'gacha', null, Date.now());
+  if (typeof r === 'string') return toast(r);
+  save(); renderHud(); sendSnap(); renderShop();
+  const m = $('#gacha-modal'), cap = $('#g-capsule'), out = $('#g-result'); m.classList.remove('hidden');
+  m.dataset.rarity = r.rarity; cap.className = 'g-capsule shake'; out.className = 'g-result hidden'; $('#g-ok').disabled = true;
+  setTimeout(() => { cap.className = 'g-capsule open r-' + r.rarity; }, 1100);
+  setTimeout(() => { const img = r.key ? `<img class="g-img" src="assets/outfits/${S.pet.char}/${S.pet.stage === 'adult' ? 'adult' : 'child'}/base_base_${r.key}.png" alt="">` : `<div class="g-emoji">${r.item === 'snack' ? '🍪' : r.item === 'medicine' ? '💊' : '🪙'}</div>`;
+    out.innerHTML = `<div class="g-tier r-${r.rarity}">${'★'.repeat({ common: 1, rare: 2, legend: 3 }[r.rarity])} ${r.rarityKo}</div>${img}<div class="g-name">${r.name}</div><div class="hint">${r.dup ? `이미 있어요! 중복 환급 +${r.coins}코인` : r.isNew ? '새 머리장식! 바로 썼어요 ✨' : '가방/코인에 넣었어요'}</div>`;
+    out.className = 'g-result pop r-' + r.rarity; $('#g-ok').disabled = false; }, 1600); }
+$('#g-ok').onclick = () => closeModal('gacha-modal');
+$('#g-again').onclick = () => { closeModal('gacha-modal'); pullGacha(); };
 // ---- WARDROBE (꾸미기): 헤어/옷 tabs, live preview ----
 let wTab = 'hair'; const wcv = $('#wPreview'), wctx = wcv.getContext('2d');
 const BASE_KO = { hair: '기본 머리', outfit: '기본 옷', acc: '없음' };

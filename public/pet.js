@@ -19,7 +19,7 @@ function petSprite(char, stage) { const c = SPR[char] || SPR[1]; return c[stage]
 // Whole-outfit sprites for child/adult: assets/outfits/<char>/<stage>/<hair>_<outfit>.png (200x260, feet at y=256)
 const OHAIR = ['base', 'pony', 'bob', 'pigtail', 'afro'], OOUT = ['base', 'hoodie', 'stripe', 'dress', 'hanbok', 'space'];
 const OFIT = { adult: { top: 16, h: 240 }, child: { top: 106, h: 150 } }, OSPR = {};
-const OACC = ['crown']; // head accessory variants: <hair>_<outfit>_<acc>.png (200x300, feet at y=296, 40px headroom)
+const OACC = ['crown', 'ribbon', 'flower', 'catears']; // head accessory variants: <hair>_<outfit>_<acc>.png (200x300, feet at y=296, 40px headroom)
 function outfitSprite(char, stage, hair, outfit, acc) {
   if (!OFIT[stage]) return null; char = SPR[char] ? char : 1; hair = OHAIR.includes(hair) ? hair : 'base'; outfit = OOUT.includes(outfit) ? outfit : 'base';
   const k = `${char}/${stage}/${hair}_${outfit}` + (OACC.includes(acc) ? `_${acc}` : ''); let im = OSPR[k];
