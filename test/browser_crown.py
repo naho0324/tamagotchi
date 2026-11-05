@@ -9,7 +9,7 @@ async def run(br, stage, char):
     await ctx.add_init_script(f"localStorage.tg_pid='cr-{stage}-{int(time.time()*1000)}';localStorage.tg_nick='왕관';localStorage.tg_save={json.dumps(json.dumps(sv))}")
     pg = await ctx.new_page(); await pg.goto(URL); await pg.wait_for_timeout(1500)
     await pg.click('[data-act=shop]'); await pg.wait_for_timeout(300)
-    await pg.evaluate("act('buy','acc_crown')"); await pg.wait_for_timeout(300)
+    await pg.evaluate("(S.owned.push('acc_crown'), act('equip','acc:crown'))"); await pg.wait_for_timeout(300)
     await pg.evaluate("document.querySelector('#shop-list h3:last-of-type')?.scrollIntoView()")
     await pg.screenshot(path=f'test/crown_shop_{stage}.png')
     await pg.click('#shop-modal .big'); await pg.wait_for_timeout(800)

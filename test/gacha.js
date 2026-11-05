@@ -5,14 +5,14 @@ for (const a of ['ribbon', 'flower', 'catears']) { assert.ok(G.ACCS.includes(a))
   for (let c = 1; c <= 7; c++) for (const s of ['child', 'adult']) for (const h of G.HAIRS.slice(0, 5)) for (const o of G.OUTFITS.slice(0, 6))
     assert.ok(fs.existsSync(`${__dirname}/../public/assets/outfits/${c}/${s}/${h}_${o}_${a}.png`), `${c}/${s}/${h}_${o}_${a}`); }
 let p = G.newPlayer('g', 'tester', now, 2); assert.strictEqual(p.gachaPity, 0);
-p.coins = 1000; assert.ok(G.act(p, 'buy', 'acc_ribbon', now).msg); assert.strictEqual(p.acc, 'ribbon'); assert.strictEqual(p.coins, 850);
+p.coins = 1000; assert.strictEqual(G.act(p, 'buy', 'acc_ribbon', now), '뽑기에서만 나와요'); p.owned.push('acc_ribbon'); G.act(p, 'equip', 'acc:ribbon', now); assert.strictEqual(p.acc, 'ribbon'); assert.strictEqual(p.coins, 1000);
 assert.strictEqual(G.act(p, 'buy', 'acc_catears', now), '뽑기에서만 나와요'); assert.ok(!p.owned.includes('acc_catears'));
 assert.strictEqual(typeof G.act(p, 'equip', 'acc:catears', now), 'string');
 p.coins = 59; assert.strictEqual(G.act(p, 'gacha', null, now), '코인이 부족해요'); assert.strictEqual(p.coins, 59);
 // rates: roll<5 legend, <30 rare, else common
 p.coins = 1000; let r = G.gacha(p, seq([0.5, 0.0])); assert.strictEqual(r.rarity, 'common'); assert.strictEqual(r.coins, 20); assert.strictEqual(p.coins, 1000 - 60 + 20);
 r = G.gacha(p, seq([0.1, 0.0])); assert.strictEqual(r.rarity, 'rare'); assert.strictEqual(r.item, 'acc_ribbon'); assert.ok(r.dup); assert.strictEqual(r.coins, 40); // owned ribbon -> refund
-r = G.gacha(p, seq([0.1, 0.1])); assert.strictEqual(r.item, 'acc_flower'); assert.ok(r.isNew); assert.strictEqual(p.acc, 'flower');
+r = G.gacha(p, seq([0.1, 0.05])); assert.strictEqual(r.item, 'acc_flower'); assert.ok(r.isNew); assert.strictEqual(p.acc, 'flower');
 const c0 = p.coins; r = G.gacha(p, seq([0.01, 0])); assert.strictEqual(r.rarity, 'legend'); assert.strictEqual(r.rarityKo, '전설'); assert.ok(r.isNew); assert.strictEqual(p.acc, 'catears'); assert.strictEqual(p.coins, c0 - 60); assert.strictEqual(p.gachaPity, 0);
 r = G.gacha(p, seq([0.01, 0])); assert.ok(r.dup); assert.strictEqual(p.coins, c0 - 120 + 150);
 assert.strictEqual(G.act(p, 'equip', 'acc:catears', now).msg, '갈아입었어요!');

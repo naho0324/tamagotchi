@@ -176,7 +176,7 @@ function renderWardrobe() { // 꾸미기 shop: owned -> tap to wear, not owned -
     b.onclick = () => { if (own) { wTry = null; act('equip', wTab + ':' + k); } else { wTry = tr ? null : { slot: wTab, k }; renderWardrobe(); } }; // unowned: tap = 미리보기 only
     list.appendChild(b); }
   rcIcons(list);
-  $('#w-note').textContent = ['egg', 'baby'].includes(S.pet.stage) ? '어린이가 되면 옷을 입어요 (미리보기)' : S.pet.stage === 'dead' ? '' : '가진 건 눌러서 입기 · 🪙 표시는 눌러서 미리 입어보기' + (!isCustom() && ['hair', 'outfit'].includes(wTab) ? ' · 새 헤어·상의는 기본 몸 전용이에요 (프리셋은 기본 차림으로 보여요)' : '');
+  $('#w-note').textContent = ['egg', 'baby'].includes(S.pet.stage) ? '어린이가 되면 옷을 입어요 (미리보기)' : S.pet.stage === 'dead' ? '' : '가진 건 눌러서 입기 · 안 가진 건 눌러서 미리 입어보기 (🎰 뽑기에서만 나와요)' + (!isCustom() && ['hair', 'outfit'].includes(wTab) ? ' · 새 헤어·상의는 기본 몸 전용이에요 (프리셋은 기본 차림으로 보여요)' : '');
 }
 function drawWardrobe(t) { const c = wctx; c.fillStyle = '#fff5f8'; c.fillRect(0, 0, wcv.width, wcv.height); c.fillStyle = '#fbe3ea'; c.fillRect(0, wcv.height - 26, wcv.width, 26);
   const stage = ['child', 'adult'].includes(S.pet.stage) ? S.pet.stage : 'child';

@@ -45,8 +45,13 @@ const SHOP = {
 // v1.5 뽑기 (gacha): 60 coins/pull. 일반 70% (coins/snack), 희귀 25% (리본/꽃핀), 전설 5% (뽑기 전용 고양이귀).
 // Duplicate 희귀 -> +40 coins, duplicate 전설 -> +150 coins. Pity: 전설 guaranteed on the 30th pull without one.
 const GACHA = { cost: 60, pity: 30, rates: { common: 70, rare: 25, legend: 5 }, dupRefund: { rare: 40, legend: 150 },
-  common: [{ coins: 20 }, { coins: 30 }, { coins: 45 }, { snack: 2 }, { medicine: 1 }], rare: ['acc_ribbon', 'acc_flower'], legend: ['acc_catears'] };
-for (const k in SHOP) if (SHOP[k].gacha === 'rare' || SHOP[k].gacha === 'legend') GACHA[SHOP[k].gacha].push(k); // v1.8: 뽑기 전용 상의/천사링
+  common: [{ coins: 20 }, { coins: 30 }, { coins: 45 }, { snack: 2 }, { medicine: 1 }],
+  // v1.9 "전부 뽑기전용": every hair/top/accessory (except free base/none) comes only from 뽑기
+  rare: ['acc_ribbon', 'acc_flower', 'hair_pony', 'hair_bob', 'hair_pigtail', 'hair_long', 'hair_bun', 'hair_spiky', 'outfit_hoodie', 'outfit_stripe', 'outfit_dress',
+    'outfit_raincoat', 'outfit_xmas', 'outfit_sailor', 'outfit_dino', 'outfit_chef', 'outfit_jersey', 'outfit_cardigan', 'outfit_bee', 'outfit_bear', 'acc_sprout', 'acc_partyhat', 'acc_beret', 'acc_bunny'],
+  legend: ['acc_catears', 'acc_crown', 'acc_halo', 'acc_headphones', 'hair_afro', 'hair_curly', 'hair_braid', 'outfit_hanbok', 'outfit_space',
+    'outfit_tux', 'outfit_knight', 'outfit_idol', 'outfit_wizard', 'outfit_aodai'] };
+for (const r of ['rare', 'legend']) for (const k of GACHA[r]) Object.assign(SHOP[k], { gacha: r, price: 0 }); // no coin purchase for cosmetics
 const RARITY_KO = { common: '일반', rare: '희귀', legend: '전설' };
 const HAIRS = ['base', 'pony', 'bob', 'pigtail', 'afro', 'long', 'bun', 'spiky', 'curly', 'braid'];
 const OUTFITS = ['base', 'hoodie', 'stripe', 'dress', 'hanbok', 'space', 'raincoat', 'xmas', 'sailor', 'dino', 'tux', 'chef', 'knight', 'idol', 'wizard', 'aodai', 'jersey', 'cardigan', 'bee', 'bear']; // outfit = 상의 (top)

@@ -8,7 +8,7 @@ async def run(br, stage, old=False):
     await ctx.add_init_script(f"localStorage.tg_pid='be-{stage}-{int(time.time()*1000)}';localStorage.tg_nick='테스트';localStorage.tg_save={json.dumps(json.dumps(sv))}")
     pg = await ctx.new_page(); await pg.goto(URL); await pg.wait_for_timeout(1500)
     await pg.click('[data-act=shop]'); await pg.wait_for_timeout(300)
-    await pg.evaluate("act('buy','outfit_hoodie')"); toast = await pg.evaluate("document.querySelector('#toast')?.textContent||''")
+    await pg.evaluate("(S.owned.push('outfit_hoodie'), act('equip','outfit:hoodie'))"); toast = await pg.evaluate("document.querySelector('#toast')?.textContent||''")
     await pg.screenshot(path=f'test/buy_shop_{stage}_{TAG}.png', full_page=True)
     await pg.click('#shop-modal .big'); await pg.wait_for_timeout(800)
     await pg.screenshot(path=f'test/buy_home_{stage}_{TAG}.png', clip=dict(x=0, y=0, width=520, height=520))

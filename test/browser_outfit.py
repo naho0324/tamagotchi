@@ -25,8 +25,8 @@ async def main():
         assert (await A.text_content('#n-energy')).endswith('/150')
         await A.screenshot(path='test/home_trait.png', clip=dict(x=0, y=0, width=520, height=520))
         await A.click('[data-act=shop]'); await A.wait_for_timeout(800); await A.screenshot(path='test/shop_outfits.png', full_page=True)
-        for k in ['hair_pigtail', 'outfit_hanbok', 'outfit_space']: await A.evaluate(f"act('buy','{k}')")
-        assert await A.text_content('#coins') == str(1000 - 100 - 180 - 250)
+        for k in ['hair_pigtail', 'outfit_hanbok', 'outfit_space']: assert await A.evaluate(f"G.act(S,'buy','{k}',Date.now())") == '뽑기에서만 나와요'
+        await A.evaluate("S.owned.push('hair_pigtail','outfit_hanbok','outfit_space'); save()"); assert await A.text_content('#coins') == '1000'
         await A.click('#shop-modal .big'); await A.click('[data-act=wardrobe]'); await A.wait_for_timeout(300)
         await A.click('#w-tabs [data-tab=hair]'); await A.click('#w-list [data-item="hair:pigtail"]')
         await A.click('#w-tabs [data-tab=outfit]'); await A.click('#w-list [data-item="outfit:hanbok"]'); await A.wait_for_timeout(800)

@@ -5,10 +5,9 @@ const pl = c => { const p = G.newPlayer('x', 'n', 0, c); G.update(p, 3 * M); ret
 for (let c = 1; c <= 7; c++) { const p = pl(c); ok(p.hair === 'base' && p.outfit === 'base', `char ${c} starts base/base`); }
 ok(['hair_pony', 'hair_bob', 'hair_pigtail', 'hair_afro'].every(k => G.SHOP[k].type === 'hair') && ['outfit_hoodie', 'outfit_stripe', 'outfit_dress', 'outfit_hanbok', 'outfit_space'].every(k => G.SHOP[k].type === 'outfit'), 'shop sells 4 hairs + 5 outfits');
 ok(!G.SHOP.hat_crown && !G.SHOP.cloth_blue, 'old hat/clothes removed');
-{ const p = pl(3); p.coins = 500; ok(G.act(p, 'buy', 'hair_afro', 4 * M).msg && p.owned.includes('hair_afro'), 'buy afro');
-  ok(typeof G.act(p, 'buy', 'hair_afro', 4 * M) === 'string', 'cannot buy twice');
+{ const p = pl(3); p.coins = 500; ok(G.act(p, 'buy', 'hair_afro', 4 * M) === '뽑기에서만 나와요' && p.coins === 500, 'hair is gacha-only');
   ok(typeof G.act(p, 'equip', 'outfit:hanbok', 4 * M) === 'string', 'cannot equip unowned');
-  G.act(p, 'equip', 'hair:afro', 4 * M); ok(p.hair === 'afro', 'equip hair');
+  p.owned.push('hair_afro'); G.act(p, 'equip', 'hair:afro', 4 * M); ok(p.hair === 'afro', 'equip hair');
   G.act(p, 'equip', 'hair:base', 4 * M); ok(p.hair === 'base', 'base always available');
   G.act(p, 'equip', 'hair:afro', 4 * M); G.update(p, 60 * M); ok(p.pet.stage === 'child' && p.hair === 'afro' && G.snapOf(p).hair === 'afro', 'kept across stages, in snapshot');
   p.pet.stage = 'dead'; G.act(p, 'restart', null, 61 * M); ok(p.owned.includes('hair_afro') && p.hair === 'afro', 'purchases survive restart'); }
