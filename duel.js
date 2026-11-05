@@ -1,5 +1,5 @@
 // 폭탄 넘기기 (v1.10): server-authoritative 1v1 wager. Both lock a stake; whoever holds the bomb when the hidden fuse
-// runs out loses; winner takes 90% of the pot (10% fee burned). Abort/disconnect before the end -> both refunded.
+// runs out loses; winner takes 90% of the pot (10% fee burned). Leaving/disconnecting mid-match = loss (opponent takes 90%).
 // Pass skill: the holder must type a short arrow sequence (3 -> 5 arrows as passes pile up); a wrong arrow resets
 // with a fresh sequence and a short lockout. Inputs are checked on the server, so latency only costs time, never fairness.
 const crypto = require('crypto');
@@ -86,8 +86,12 @@ class DuelLobby {
     this.h.pay(w.sid, prize);
     this.io.to(this.room).emit('b:end', { winner: w.sid, loser: g.p[loser].sid, stake: g.stake, prize, fee: g.pot - prize, passes: g.passes, time: Date.now() - g.t0, energy: ENERGY });
     this.emitLobby(); }
+  // leaving / disconnecting mid-match = loss: the opponent takes the pot (90%), same as a normal win
+  forfeit(sid) { const g = this.stop(); if (!g) return; const w = g.p.find(q => q.sid !== sid), prize = payout(g.stake); this.h.pay(w.sid, prize);
+    const d = { winner: w.sid, loser: sid, forfeit: true, reason: '상대가 나가서 기권승!', stake: g.stake, prize, fee: g.pot - prize, passes: g.passes || 0, energy: ENERGY };
+    this.io.to(this.room).emit(g.mode === 'draw' ? 'd:end' : 'b:end', d); this.emitLobby(); }
   abort(reason) { const g = this.stop(); if (!g) return; for (const q of g.p) this.h.refund(q.sid, g.stake);
     this.io.to(this.room).emit(g.mode === 'draw' ? 'd:end' : 'b:end', { draw: true, reason, stake: g.stake, prize: 0, refund: g.stake, energy: ENERGY }); this.emitLobby(); }
-  leave(sid, socket) { this.cancel(sid); if (this.inGame(sid)) this.abort('상대가 나가서 무승부 — 판돈 환불'); if (socket) socket.leave(this.room); }
+  leave(sid, socket) { this.cancel(sid); if (this.inGame(sid)) this.forfeit(sid); if (socket) socket.leave(this.room); }
 }
 module.exports = { DuelLobby, PROMPTS, GRID, MODES, cleanPic, STAKES, FEE, ENERGY, CFG, payout, seqLen };

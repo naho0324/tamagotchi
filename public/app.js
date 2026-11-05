@@ -664,7 +664,7 @@ function duelLobby() { BM = null; DR = null; show('duel'); $('#du-title').textCo
   $('#du-lobby').classList.remove('hidden'); $('#bomb-play').classList.add('hidden'); $('#draw-play').classList.add('hidden'); renderDuMode(); sendSnap(); socket.emit('b:watch'); }
 function renderDuMode() { document.querySelectorAll('#du-modes button').forEach(b => b.classList.toggle('sel', b.dataset.mode === duMode)); $('#du-rule').textContent = RULES[duMode]; }
 $('#duel-btn').onclick = () => { if (S && ['egg', 'baby'].includes(S.pet.stage)) return toast('어린이부터 할 수 있어요 (알·아기는 안 돼요)'); socket.emit('plaza:leave'); socket.emit('v:cancel'); duelLobby(); };
-$('#du-back').onclick = () => { socket.emit('b:leave'); BM = null; DR = null; enterPlaza(); };
+$('#du-back').onclick = () => { if ((BM || DR) && !confirm('지금 나가면 기권패! 판돈을 잃어요. 나갈까요?')) return; socket.emit('b:leave'); BM = null; DR = null; enterPlaza(); };
 document.querySelectorAll('#du-modes button').forEach(b => b.onclick = () => { duMode = b.dataset.mode; renderDuMode(); });
 document.querySelectorAll('#du-stakes button').forEach(b => b.onclick = () => { sendSnap(); socket.emit('b:create', +b.dataset.stake, duMode); });
 $('#du-cancel').onclick = () => socket.emit('b:cancel');
@@ -712,7 +712,7 @@ function bindDuel() {
   socket.on('b:miss', () => toast('틀렸어요! 새 화살표로 다시 ❌'));
   socket.on('b:end', d => { if (!BM) return; BM = null; sendSnap();
     if (d.draw) return duEnd('🤝 무승부', `${d.reason} · 🪙${d.refund} 돌려받음, 에너지 -${d.energy}`);
-    const win = d.winner === socket.id; duEnd(win ? '🏆 승리! 폭탄이 상대 손에서 펑!' : '💥 펑! 패배...', (win ? `+${d.prize} 코인 (판돈 ${d.stake}×2, 수수료 ${d.fee})` : `판돈 🪙${d.stake} 잃음`) + ` · ${d.passes}번 넘김 · 에너지 -${d.energy}`); });
+    const win = d.winner === socket.id; if (d.forfeit) return duEnd(win ? '🏆 기권승!' : '🏳️ 기권패', (win ? `상대가 나갔어요 · +${d.prize} 코인 (수수료 ${d.fee})` : `나가서 판돈 🪙${d.stake} 잃음`) + ` · 에너지 -${d.energy}`); duEnd(win ? '🏆 승리! 폭탄이 상대 손에서 펑!' : '💥 펑! 패배...', (win ? `+${d.prize} 코인 (판돈 ${d.stake}×2, 수수료 ${d.fee})` : `판돈 🪙${d.stake} 잃음`) + ` · ${d.passes}번 넘김 · 에너지 -${d.energy}`); });
   socket.on('d:start', d => { DR = { phase: 'draw', pic: new Array(256).fill(0), sent: false, players: d.players };
     $('#du-lobby').classList.add('hidden'); $('#draw-play').classList.remove('hidden'); $('#draw-pal').classList.remove('hidden'); $('#draw-tools').classList.remove('hidden'); $('#draw-choices').classList.add('hidden');
     $('#du-title').textContent = `🎨 그림 대결 · 상금 🪙${d.prize}`; $('#draw-word').innerHTML = `그려요: <span class="nx">${esc(d.word)}</span>`; $('#draw-msg').textContent = '상대에게는 비밀! 칸을 눌러 칠해요'; paintGrid(DR.pic); duTimer(d.ms, $('#du-time'), sendPic); sendSnap(); });
@@ -725,5 +725,6 @@ function bindDuel() {
   socket.on('d:end', d => { if (!DR) return; clearInterval(DR.tm); DR = null; sendSnap(); const me = (d.info || []).find(x => x.sid === socket.id), op = (d.info || []).find(x => x.sid !== socket.id);
     const line = me && op ? `내 단어 「${me.word}」 → 상대 답 ${op.guess ? `「${op.guess}」${op.ok ? '⭕' : '❌'}` : '없음'} · 상대 단어 「${op.word}」 → 내 답 ${me.guess ? `「${me.guess}」${me.ok ? '⭕' : '❌'}` : '없음'}` : '';
     if (d.draw) return duEnd('🤝 무승부', `${d.reason} · 🪙${d.refund} 돌려받음 · ${line} · 에너지 -${d.energy}`);
-    const win = d.winner === socket.id; duEnd(win ? '🏆 그림 대결 승리!' : '😢 그림 대결 패배...', (win ? `+${d.prize} 코인 (수수료 ${d.fee})` : `판돈 🪙${d.stake} 잃음`) + ` · ${line} · 에너지 -${d.energy}`); });
+    const win = d.winner === socket.id; if (d.forfeit) return duEnd(win ? '🏆 기권승!' : '🏳️ 기권패', (win ? `상대가 나갔어요 · +${d.prize} 코인 (수수료 ${d.fee})` : `나가서 판돈 🪙${d.stake} 잃음`) + ` · 에너지 -${d.energy}`);
+    duEnd(win ? '🏆 그림 대결 승리!' : '😢 그림 대결 패배...', (win ? `+${d.prize} 코인 (수수료 ${d.fee})` : `판돈 🪙${d.stake} 잃음`) + ` · ${line} · 에너지 -${d.energy}`); });
 }

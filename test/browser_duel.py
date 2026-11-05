@@ -58,6 +58,13 @@ async def main():
         await A.wait_for_timeout(800)
         ca, cb = await A.evaluate('S.coins'), await B.evaluate('S.coins'); print('draw coins', ca, cb, await A.text_content('#end-msg')); assert (ca, cb) == (a0 + 8, b0 - 10), (a0, b0, ca, cb)
         W = A if ca > a0 else B; await W.screenshot(path='test/draw_win.png')
+        # forfeit: B leaves mid-bomb -> A wins 90%
+        for pg in P: await pg.click('#end-ok'); await pg.wait_for_timeout(300)
+        a0, b0 = await A.evaluate('S.coins'), await B.evaluate('S.coins')
+        await A.click('#du-modes [data-mode=bomb]'); await A.click('#du-stakes [data-stake="10"]'); await B.wait_for_timeout(500); await B.click('[data-join]'); await A.wait_for_timeout(600)
+        B.once('dialog', lambda d: asyncio.ensure_future(d.accept())); await B.click('#du-back'); await A.wait_for_timeout(800)
+        ca, cb = await A.evaluate('S.coins'), await B.evaluate('S.coins'); assert (ca, cb) == (a0 + 8, b0 - 10), (a0, b0, ca, cb)
+        assert '기권승' in await A.text_content('#end-title'); await A.screenshot(path='test/duel_forfeit.png'); print('forfeit:', await A.text_content('#end-msg'))
         print('ERRORS:', errs); assert not errs; print('duel browser OK'); await b.close()
 BW = []
 asyncio.run(main())

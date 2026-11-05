@@ -30,7 +30,10 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   ok(fz.size > 10, 'fuse varies');
   // disconnect -> refund both
   W.a = 100; W.b = 100; L2.create(a, { nickname: 'A' }, 50); L2.join(b, { nickname: 'B' }, L2.tables[0].id); ok(W.a === 50 && W.b === 50, 'locked 50');
-  L2.leave('b'); ok(W.a === 100 && W.b === 100 && last('b:end').d.draw, 'leave mid-game -> refund + draw');
+  L2.leave('b'); { const e2 = last('b:end').d; ok(W.a === 50 + 90 && W.b === 50 && e2.forfeit && e2.winner === 'a' && e2.loser === 'b', 'bomb leave mid-game -> leaver loses, opponent +90%'); }
+  W.a = W.b = 100; const Lf = new D.DuelLobby(io, 'rf', hooks); Lf.create(a, { nickname: 'A' }, 30, 'draw'); Lf.join(b, { nickname: 'B' }, Lf.tables[0].id); Lf.leave('a');
+  { const e3 = last('d:end').d; ok(W.a === 70 && W.b === 70 + 54 && e3.forfeit && e3.winner === 'b' && !Lf.game, 'draw leave mid-game -> leaver loses'); }
+  W.a = W.b = 100; Lf.create(a, { nickname: 'A' }, 30); Lf.leave('a'); ok(W.a === 100 && !Lf.tables.length, 'closing an open table costs nothing');
   // draw duel
   const L3 = new D.DuelLobby(io, 'r3', hooks, { drawMs: 300, guessMs: 300 }); W.a = W.b = 100;
   ok(L3.create(a, { nickname: 'A' }, 30, 'draw') === null && L3.tables[0].mode === 'draw', 'draw table');
