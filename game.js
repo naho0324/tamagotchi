@@ -213,9 +213,9 @@ function sanitizeSnap(s, nickname) {
   s = s && typeof s === 'object' ? s : {}; const st = s.stats || {}, char = validChar(s.char) ? +s.char : 1, num = (v, k) => clamp(Number.isFinite(+v) ? +v : 0, maxOf(char, k));
   return { nickname: String(nickname || s.nickname || '손님').slice(0, 12), char, custom: validCustom(s.custom), petName: cleanName(s.petName), stage: STAGES.includes(s.stage) ? s.stage : 'egg',
     stats: { hunger: num(st.hunger, 'hunger'), happy: num(st.happy, 'happy'), energy: num(st.energy, 'energy'), clean: num(st.clean, 'clean') }, sick: !!s.sick, sleeping: !!s.sleeping,
-    hair: HAIRS.includes(s.hair) ? s.hair : 'base', outfit: OUTFITS.includes(s.outfit) ? s.outfit : 'base', acc: ACCS.includes(s.acc) ? s.acc : 'none' };
+    hair: HAIRS.includes(s.hair) ? s.hair : 'base', outfit: OUTFITS.includes(s.outfit) ? s.outfit : 'base', acc: ACCS.includes(s.acc) ? s.acc : 'none', coins: clamp(Math.floor(+s.coins) || 0, COIN_CAP) };
 }
-function snapOf(player) { const p = player.pet; return { nickname: player.nickname, char: p.char, custom: validCustom(p.custom), petName: cleanName(p.name), stage: p.stage, stats: { ...p.stats }, sick: p.sick, sleeping: p.sleeping, hair: player.hair || 'base', outfit: player.outfit || 'base', acc: player.acc || 'none' }; }
+function snapOf(player) { const p = player.pet; return { nickname: player.nickname, char: p.char, custom: validCustom(p.custom), petName: cleanName(p.name), stage: p.stage, stats: { ...p.stats }, sick: p.sick, sleeping: p.sleeping, hair: player.hair || 'base', outfit: player.outfit || 'base', acc: player.acc || 'none', coins: player.coins || 0 }; }
 // single-player minigames (v1.2): cheap energy, modest coins; server validates time + score range
 const MINI = { memory: { name: '짝맞추기', energy: 8, minMs: 6000, maxMs: 600000 }, pop: { name: '하트 팡팡', energy: 8, minMs: 29000, maxMs: 120000, maxScore: 90 } };
 function miniCoins(game, score) { score = Math.floor(+score);

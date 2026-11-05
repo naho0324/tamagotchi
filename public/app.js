@@ -35,9 +35,9 @@ function start() {
   socket.on('connect_error', e => toast('연결 실패: ' + e.message));
   socket.on('connect', () => { sendSnap(); if (myRoom) socket.emit('room:join', myRoom, r => { if (r.ok && inPlaza) socket.emit('plaza:join'); if (!r.ok) { myRoom = null; toast('방이 사라졌어요'); if (!$('#home').classList.contains('hidden')) return; show('home'); } }); });
   // minigame results from the server, applied to the local save
-  socket.on('apply', d => { if (!S) return; tickSim(); if (d.coins) G.addCoins(S, Math.max(0, Math.min(750, d.coins | 0)));
+  socket.on('apply', d => { if (!S) return; tickSim(); if (d.coins) G.addCoins(S, Math.max(0, Math.min(750, d.coins | 0))); if (d.spend) G.addCoins(S, -Math.max(0, Math.min(100, d.spend | 0)));
     if (d.energy) S.pet.stats.energy = G.clamp(S.pet.stats.energy + Math.max(-100, Math.min(100, +d.energy || 0))); if (d.win) S.wins = (S.wins || 0) + 1; save(); renderHud(); });
-  bindSocket(); miniBind(); bkBind();
+  bindSocket(); miniBind(); bkBind(); bindDuel();
 }
 $('#nick-ok').onclick = () => {
   const n = $('#nick').value.trim(); if (!n) return toast('닉네임을 입력해주세요');
@@ -477,7 +477,7 @@ function bindSocket() {
     $('#end-msg').textContent = `${d.score[0]} : ${d.score[1]}` + (d.forfeit ? ' (기권)' : '') + ` · +${d.reward || 0} 코인, 에너지 -${d.energy || 0}`;
     $('#end-modal').classList.remove('hidden'); });
 }
-$('#end-ok').onclick = () => { closeModal('end-modal'); if (!$('#mini').classList.contains('hidden') || !$('#breakout').classList.contains('hidden')) return enterPlaza(); if (!$('#snake').classList.contains('hidden') || !$('#raid').classList.contains('hidden')) { enterPlaza(); return; } if (inPlaza) { show('plaza'); $('#match-status').textContent = '화면을 눌러 이동해요'; } else show('home'); };
+$('#end-ok').onclick = () => { closeModal('end-modal'); if (!$('#duel').classList.contains('hidden')) return duelLobby(); if (!$('#mini').classList.contains('hidden') || !$('#breakout').classList.contains('hidden')) return enterPlaza(); if (!$('#snake').classList.contains('hidden') || !$('#raid').classList.contains('hidden')) { enterPlaza(); return; } if (inPlaza) { show('plaza'); $('#match-status').textContent = '화면을 눌러 이동해요'; } else show('home'); };
 function loop(t) {
   if (!$('#home').classList.contains('hidden')) drawRoom(t);
   if (S && !$('#wardrobe-modal').classList.contains('hidden')) drawWardrobe(t);
@@ -485,6 +485,7 @@ function loop(t) {
   if (!$('#volley').classList.contains('hidden')) drawVolley(t);
   if (!$('#snake').classList.contains('hidden')) drawSnake(t);
   if (!$('#raid').classList.contains('hidden')) { raidTick(); drawRaid(t); }
+  if (!$('#duel').classList.contains('hidden') && BM) drawBomb(t);
   requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);
@@ -653,3 +654,76 @@ $('#cr-ok').onclick = () => {
 $('#cr-cancel').onclick = () => closeModal('creator-modal');
 (function crLoop(t) { if (CR && !$('#creator-modal').classList.contains('hidden')) drawCreator(t); requestAnimationFrame(crLoop); })(0);
 start(); // after creator code is defined
+
+// ---- 1:1 내기 대결 (v1.10): 💣 폭탄 넘기기 + 🎨 그림 그리기 대결. Server owns stakes, fuse, prompts and answers. ----
+const ARW = { up: '▲', down: '▼', left: '◀', right: '▶' }, DPAL = ['#ffffff', '#1d2557', '#f2545b', '#f2a25c', '#ffe066', '#6cc98a', '#5aa0f2', '#a98be0'];
+let BM = null, DR = null, duMode = 'bomb', duLob = null;
+const RULES = { bomb: '💣 폭탄을 들고 있으면 화살표 3~5개를 순서대로 눌러 상대에게 넘겨요. 숨겨진 30~60초 심지가 다 타면 들고 있던 쪽이 져요!',
+  draw: '🎨 서로 다른 비밀 단어를 40초 동안 16×16 픽셀로 그려요. 그다음 상대 그림을 보고 4개 중에서 맞혀요. 혼자 맞히면 승리, 둘 다 맞히면 더 빨리 맞힌 쪽 승리, 둘 다 틀리면 환불!' };
+function duelLobby() { BM = null; DR = null; show('duel'); $('#du-title').textContent = '1:1 내기 대결'; $('#du-time').textContent = '';
+  $('#du-lobby').classList.remove('hidden'); $('#bomb-play').classList.add('hidden'); $('#draw-play').classList.add('hidden'); renderDuMode(); sendSnap(); socket.emit('b:watch'); }
+function renderDuMode() { document.querySelectorAll('#du-modes button').forEach(b => b.classList.toggle('sel', b.dataset.mode === duMode)); $('#du-rule').textContent = RULES[duMode]; }
+$('#duel-btn').onclick = () => { if (S && ['egg', 'baby'].includes(S.pet.stage)) return toast('어린이부터 할 수 있어요 (알·아기는 안 돼요)'); socket.emit('plaza:leave'); socket.emit('v:cancel'); duelLobby(); };
+$('#du-back').onclick = () => { socket.emit('b:leave'); BM = null; DR = null; enterPlaza(); };
+document.querySelectorAll('#du-modes button').forEach(b => b.onclick = () => { duMode = b.dataset.mode; renderDuMode(); });
+document.querySelectorAll('#du-stakes button').forEach(b => b.onclick = () => { sendSnap(); socket.emit('b:create', +b.dataset.stake, duMode); });
+$('#du-cancel').onclick = () => socket.emit('b:cancel');
+function renderDuTables(l) { duLob = l; const mine = l.tables.find(t => t.hostSid === socket.id); $('#du-cancel').classList.toggle('hidden', !mine);
+  $('#du-tables').innerHTML = (l.playing ? `<p class="hint">진행 중: ${l.players.map(esc).join(' vs ')} (${l.mode === 'draw' ? '🎨' : '💣'})</p>` : '') +
+    (l.tables.length ? l.tables.map(t => `<div class="item"><span>${t.mode === 'draw' ? '🎨' : '💣'} ${esc(t.host)} · 🪙${t.stake}</span>${t.hostSid === socket.id ? '<small>상대 기다리는 중...</small>' : `<button class="small b-pink" data-join="${t.id}">도전!</button>`}</div>`).join('') : '<p class="hint">열린 테이블이 없어요. 판돈을 눌러 열어보세요!</p>');
+  $('#du-tables').querySelectorAll('[data-join]').forEach(b => b.onclick = () => { sendSnap(); socket.emit('b:join', +b.dataset.join); }); }
+function duEnd(title, msg) { $('#end-title').textContent = title; $('#end-msg').textContent = msg; $('#end-modal').classList.remove('hidden'); }
+// bomb
+const bcv = $('#bombCv'), bctx = bcv.getContext('2d'); bctx.imageSmoothingEnabled = false;
+function bombKey(d) { if (BM && BM.st && BM.st.holder === socket.id) socket.emit('b:key', d); }
+document.querySelectorAll('#bomb-pad button').forEach(b => b.onpointerdown = e => { e.preventDefault(); bombKey(b.dataset.d); });
+addEventListener('keydown', e => { if ($('#duel').classList.contains('hidden') || !BM) return; const d = SKEY[e.key]; if (d) { e.preventDefault(); bombKey(d); } });
+function renderBombSeq() { const st = BM.st, mine = st.holder === socket.id;
+  $('#bomb-seq').innerHTML = mine ? st.seq.map((d, i) => `<span class="${i < st.idx ? 'ok' : i === st.idx ? 'nx' : ''}">${ARW[d]}</span>`).join(' ') : '<span>😮‍💨</span>';
+  $('#bomb-msg').textContent = mine ? (st.lock > 0 ? '❌ 틀렸어요! 잠깐 멈춤...' : '💣 내가 들고 있어요! 빨리 넘겨요!') : '상대가 폭탄을 들고 있어요... 두근두근';
+  $('#du-time').textContent = `🔁 ${st.passes}번 넘김`; }
+function drawBomb(t) { const c = bctx, st = BM.st; c.fillStyle = '#ffe9f0'; c.fillRect(0, 0, 480, 260); c.fillStyle = '#c9ecd2'; c.fillRect(0, 210, 480, 50);
+  BM.players.forEach((p, i) => { const x = i ? 360 : 120; drawPet(c, x, 205, 110, p.look, t, { still: false });
+    c.fillStyle = '#1d2557'; c.font = 'bold 15px sans-serif'; c.textAlign = 'center'; c.fillText(p.look.nickname + (p.sid === socket.id ? ' (나)' : ''), x, 250); });
+  if (!st) return; const hi = BM.players.findIndex(p => p.sid === st.holder); BM.bx = BM.bx == null ? (hi ? 360 : 120) : BM.bx + ((hi ? 360 : 120) - BM.bx) * 0.2;
+  const heat = st.heat, sh = heat * 4 * Math.sin(t / (60 - heat * 40)), bx = BM.bx + sh, by = 60 - Math.abs(Math.sin((BM.bx - 120) / 240 * Math.PI)) * 40;
+  c.fillStyle = '#2b2b3a'; c.beginPath(); c.arc(bx, by, 24 + heat * 4, 0, 7); c.fill(); c.fillStyle = '#fff'; c.fillRect(bx - 12, by - 12, 6, 6);
+  c.strokeStyle = '#8a5a2a'; c.lineWidth = 4; c.beginPath(); c.moveTo(bx + 14, by - 18); c.lineTo(bx + 24, by - 32); c.stroke();
+  c.fillStyle = (t / 80 | 0) % 2 ? '#ffb400' : '#f2545b'; c.beginPath(); c.arc(bx + 25, by - 34, 6 + heat * 5, 0, 7); c.fill();
+  c.fillStyle = `rgba(242,84,91,${heat * 0.25})`; c.fillRect(0, 0, 480, 260); }
+// draw
+const dcv = $('#drawCv'), dctx = dcv.getContext('2d'); let dColor = 1, dDown = false;
+$('#draw-pal').innerHTML = DPAL.map((c, i) => `<button data-c="${i}" style="background:${c}"${i === 1 ? ' class="sel"' : ''}></button>`).join('');
+document.querySelectorAll('#draw-pal button').forEach(b => b.onclick = () => { dColor = +b.dataset.c; document.querySelectorAll('#draw-pal button').forEach(x => x.classList.toggle('sel', x === b)); });
+function paintGrid(pic) { const n = 16, s = 320 / n; for (let i = 0; i < n * n; i++) { dctx.fillStyle = DPAL[+pic[i] || 0]; dctx.fillRect((i % n) * s, (i / n | 0) * s, s, s); }
+  dctx.strokeStyle = '#f0e4ea'; dctx.lineWidth = 1; for (let k = 1; k < n; k++) { dctx.beginPath(); dctx.moveTo(k * s, 0); dctx.lineTo(k * s, 320); dctx.moveTo(0, k * s); dctx.lineTo(320, k * s); dctx.stroke(); } }
+function dPaint(e) { if (!DR || DR.phase !== 'draw' || DR.sent) return; const r = dcv.getBoundingClientRect(), x = Math.floor((e.clientX - r.left) / r.width * 16), y = Math.floor((e.clientY - r.top) / r.height * 16);
+  if (x < 0 || y < 0 || x > 15 || y > 15) return; const i = y * 16 + x; DR.pic[i] = dColor; paintGrid(DR.pic); }
+dcv.onpointerdown = e => { dDown = true; dcv.setPointerCapture(e.pointerId); dPaint(e); }; dcv.onpointermove = e => dDown && dPaint(e); dcv.onpointerup = () => dDown = false;
+$('#draw-clear').onclick = () => { if (DR && DR.phase === 'draw' && !DR.sent) { DR.pic.fill(0); paintGrid(DR.pic); } };
+function sendPic() { if (!DR || DR.sent) return; DR.sent = true; socket.emit('d:pic', DR.pic.join('')); $('#draw-msg').textContent = '제출했어요! 상대를 기다리는 중...'; }
+$('#draw-done').onclick = sendPic;
+function duTimer(ms, el, onEnd) { clearInterval(DR && DR.tm); const end = Date.now() + ms; DR.tm = setInterval(() => { const s = Math.max(0, Math.ceil((end - Date.now()) / 1000)); el.textContent = `⏱ ${s}초`; if (!s) { clearInterval(DR.tm); onEnd && onEnd(); } }, 200); }
+function bindDuel() {
+  socket.on('b:lobby', l => { if (!$('#duel').classList.contains('hidden')) renderDuTables(l); });
+  socket.on('b:start', d => { if (!d.players.some(p => p.sid === socket.id)) return; BM = { players: d.players, st: null, bx: null };
+    $('#du-lobby').classList.add('hidden'); $('#bomb-play').classList.remove('hidden'); $('#du-title').textContent = `💣 폭탄 넘기기 · 상금 🪙${d.prize}`; sendSnap(); });
+  socket.on('b:state', st => { if (!BM) return; BM.st = st; renderBombSeq(); });
+  socket.on('b:miss', () => toast('틀렸어요! 새 화살표로 다시 ❌'));
+  socket.on('b:end', d => { if (!BM) return; BM = null; sendSnap();
+    if (d.draw) return duEnd('🤝 무승부', `${d.reason} · 🪙${d.refund} 돌려받음, 에너지 -${d.energy}`);
+    const win = d.winner === socket.id; duEnd(win ? '🏆 승리! 폭탄이 상대 손에서 펑!' : '💥 펑! 패배...', (win ? `+${d.prize} 코인 (판돈 ${d.stake}×2, 수수료 ${d.fee})` : `판돈 🪙${d.stake} 잃음`) + ` · ${d.passes}번 넘김 · 에너지 -${d.energy}`); });
+  socket.on('d:start', d => { DR = { phase: 'draw', pic: new Array(256).fill(0), sent: false, players: d.players };
+    $('#du-lobby').classList.add('hidden'); $('#draw-play').classList.remove('hidden'); $('#draw-pal').classList.remove('hidden'); $('#draw-tools').classList.remove('hidden'); $('#draw-choices').classList.add('hidden');
+    $('#du-title').textContent = `🎨 그림 대결 · 상금 🪙${d.prize}`; $('#draw-word').innerHTML = `그려요: <span class="nx">${esc(d.word)}</span>`; $('#draw-msg').textContent = '상대에게는 비밀! 칸을 눌러 칠해요'; paintGrid(DR.pic); duTimer(d.ms, $('#du-time'), sendPic); sendSnap(); });
+  socket.on('d:wait', w => { if (DR && DR.phase === 'draw' && !w.done.includes(socket.id)) $('#draw-msg').textContent = '상대가 다 그렸어요! 서둘러요 ✏️'; });
+  socket.on('d:guess', g => { if (!DR) return; DR.phase = 'guess'; DR.sent = true; paintGrid(g.pic); $('#draw-pal').classList.add('hidden'); $('#draw-tools').classList.add('hidden');
+    $('#draw-word').textContent = `${g.from}의 그림은 뭘까요?`; $('#draw-msg').textContent = '한 번만 고를 수 있어요! 빨리 맞힐수록 유리해요';
+    const ch = $('#draw-choices'); ch.classList.remove('hidden'); ch.innerHTML = g.choices.map((w, i) => `<button class="small b-pink" data-g="${i}">${esc(w)}</button>`).join('');
+    ch.querySelectorAll('button').forEach(b => b.onclick = () => { socket.emit('d:guess', +b.dataset.g); ch.querySelectorAll('button').forEach(x => { x.disabled = true; x.classList.toggle('b-green', x === b); }); $('#draw-msg').textContent = '골랐어요! 결과를 기다려요...'; });
+    duTimer(g.ms, $('#du-time')); });
+  socket.on('d:end', d => { if (!DR) return; clearInterval(DR.tm); DR = null; sendSnap(); const me = (d.info || []).find(x => x.sid === socket.id), op = (d.info || []).find(x => x.sid !== socket.id);
+    const line = me && op ? `내 단어 「${me.word}」 → 상대 답 ${op.guess ? `「${op.guess}」${op.ok ? '⭕' : '❌'}` : '없음'} · 상대 단어 「${op.word}」 → 내 답 ${me.guess ? `「${me.guess}」${me.ok ? '⭕' : '❌'}` : '없음'}` : '';
+    if (d.draw) return duEnd('🤝 무승부', `${d.reason} · 🪙${d.refund} 돌려받음 · ${line} · 에너지 -${d.energy}`);
+    const win = d.winner === socket.id; duEnd(win ? '🏆 그림 대결 승리!' : '😢 그림 대결 패배...', (win ? `+${d.prize} 코인 (수수료 ${d.fee})` : `판돈 🪙${d.stake} 잃음`) + ` · ${line} · 에너지 -${d.energy}`); });
+}

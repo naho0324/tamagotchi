@@ -8,6 +8,7 @@ const { Match } = require('./volley');
 const { SnakeLobby } = require('./snake');
 const { BreakoutLobby } = require('./breakout');
 const { RaidLobby } = require('./raid');
+const Bomb = require('./duel');
 
 const app = express(); app.use(express.static(path.join(__dirname, 'public')));
 app.get('/game.js', (q, r) => r.sendFile(path.join(__dirname, 'game.js'))); // shared care rules for the client
@@ -26,6 +27,7 @@ function newCode() { let c; do { c = ''; for (let i = 0; i < 6; i++) c += CODE_C
 const normCode = c => String(c || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
 // give a client its result; also keep the server-side snapshot in step so the gate stays meaningful
 function apply(s, d) { if (!s) return d; const p = s.snap;
+  if (p && d.wager) { p.coins = G.clamp((p.coins || 0) + (d.coins || 0) - (d.spend || 0), G.COIN_CAP); s.emit('apply', d); if (d.energy) p.stats.energy = G.clamp(p.stats.energy + d.energy, G.maxOf(p.char, 'energy')); return d; } // stakes: no trait multipliers
   if (p && d.coins > 0 && p.char === 2 && p.stats.happy > 120) d = { ...d, coins: Math.round(d.coins * 1.5), bonus: 1.5 }; // 애교쟁이
   if (p && d.energy) p.stats.energy = G.clamp(p.stats.energy + d.energy, G.maxOf(p.char, 'energy')); s.emit('apply', d); return d; }
 function canPlay(s, cost) {
@@ -49,6 +51,14 @@ function makeRoom() {
   room.breakout = new BreakoutLobby(io, results => {
     for (const r of results) { const so = sock(r.sid); if (so) { if (!r.left && r.coins) r.coins = apply(so, { coins: r.coins }).coins; so.emit('bk:end', results.map(q => q.sid === r.sid ? r : q)); } }
   }, 'breakout:' + code);
+  const bcfg = { ...(process.env.BOMB_FUSE_MS ? { fuseMin: +process.env.BOMB_FUSE_MS, fuseMax: +process.env.BOMB_FUSE_MS } : {}), ...(process.env.DRAW_MS ? { drawMs: +process.env.DRAW_MS } : {}) };
+  room.bomb = new Bomb.DuelLobby(io, 'duel:' + code, {
+    gate: (sid, stake) => { const so = sock(sid); if (!so) return '연결이 끊겼어요'; const p = so.snap;
+      if (p && !['child', 'adult'].includes(p.stage)) return '어린이부터 할 수 있어요 (알·아기는 안 돼요)';
+      const e = canPlay(so, Bomb.ENERGY); if (e) return e; if ((p.coins || 0) < stake) return `코인이 부족해요 (판돈 ${stake})`; return null; },
+    charge: (sid, stake, energy) => apply(sock(sid), { wager: 1, spend: stake, energy: -energy }),
+    pay: (sid, coins) => apply(sock(sid), { wager: 1, coins, win: 1 }),
+    refund: (sid, coins) => apply(sock(sid), { wager: 1, coins }) }, bcfg);
   room.snake.gate = room.raid.gate = room.breakout.gate = (p, cost) => { const so = sock(p.sid); return so ? canPlay(so, cost) : '연결이 끊겼어요'; };
   room.snake.charge = room.raid.charge = room.breakout.charge = (players, cost) => players.forEach(p => apply(sock(p.sid), { energy: -cost }));
   rooms.set(code, room); return room;
@@ -62,7 +72,7 @@ function enterRoom(socket, room) {
 }
 function leaveRoom(socket) {
   const room = rooms.get(socket.roomCode); if (!room) return;
-  room.raid.leave(socket.id); room.snake.leave(socket.id); room.breakout.leave(socket.id);
+  room.bomb.leave(socket.id, socket); room.raid.leave(socket.id); room.snake.leave(socket.id); room.breakout.leave(socket.id);
   if (room.queue && room.queue.socket.id === socket.id) room.queue = null;
   room.members.delete(socket.id); socket.leave('room:' + room.code); socket.roomCode = null;
   // Keep empty rooms alive for a while: on phones the creator switches apps to share the code, the browser
@@ -115,6 +125,15 @@ io.on('connection', socket => {
   const joinLobby = (lob, cost, kick) => { const r = need(); if (!r) return socket.emit(kick, '먼저 방에 들어가세요');
     const e = canPlay(socket, cost); if (e) { socket.emit('toast', e); return socket.emit(kick, e); }
     const j = r[lob].join(socket, { ...look(socket), id: socket.user.id }); if (j && j !== 'already') socket.emit('toast', j); else r[lob].emitLobby(); };
+  // 폭탄 넘기기 (1:1 wager)
+  socket.on('b:watch', () => { const r = need(); r && r.bomb.watch(socket); });
+  socket.on('b:create', (stake, mode) => { const r = need(); if (!r) return; const e = r.bomb.create(socket, look(socket), stake, mode); if (e) socket.emit('toast', e); });
+  socket.on('b:join', id => { const r = need(); if (!r) return; const e = r.bomb.join(socket, look(socket), id); if (e) socket.emit('toast', e); });
+  socket.on('b:cancel', () => { const r = room(); r && r.bomb.cancel(socket.id); });
+  socket.on('b:key', d => { const r = room(); r && r.bomb.key(socket.id, d); });
+  socket.on('d:pic', p => { const r = room(); r && r.bomb.pic(socket.id, p); });
+  socket.on('d:guess', i => { const r = room(); r && r.bomb.guess(socket.id, i); });
+  socket.on('b:leave', () => { const r = room(); r && r.bomb.leave(socket.id, socket); });
   socket.on('bk:join', () => joinLobby('breakout', 10, 'bk:kicked'));
   socket.on('bk:leave', () => { const r = room(); r && r.breakout.leave(socket.id); });
   socket.on('bk:start', () => { const r = room(); const e = r ? r.breakout.start(socket.id) : '방이 없어요'; if (e) socket.emit('toast', e); });

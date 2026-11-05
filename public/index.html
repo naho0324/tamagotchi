@@ -42,8 +42,31 @@
     <div class="row"><button id="match" class="big b-pink">🏐 배구 매칭 <small>⚡15</small></button><button id="practice" class="big b-blue">🤖 연습 경기 <small>⚡15</small></button></div>
     <div class="row"><button id="snake-btn" class="big b-green">🐍 스네이크 (1~6명) <small>⚡15</small></button><button id="raid-btn" class="big b-purple">👑 보스 레이드 (1~6명) <small>⚡15~30</small></button></div>
     <div class="row"><button id="m-memory" class="big b-pink">🃏 짝맞추기 (혼자) <small>⚡8</small></button><button id="m-pop" class="big b-green">💗 하트 팡팡 (혼자) <small>⚡8</small></button></div>
-    <div class="row"><button id="bk-btn" class="big b-blue">🧱 벽돌부수기 (1~2명) <small>⚡10</small></button></div>
+    <div class="row"><button id="bk-btn" class="big b-blue">🧱 벽돌부수기 (1~2명) <small>⚡10</small></button><button id="duel-btn" class="big b-rose">⚔️ 1:1 내기 대결 <small>⚡10</small></button></div>
     <div id="match-status" class="hint">화면을 눌러 이동해요</div>
+  </section>
+  <!-- DUEL (v1.10): 폭탄 넘기기 + 그림 그리기 대결, 1:1 coin stakes -->
+  <section id="duel" class="screen hidden">
+    <div class="topbar"><button id="du-back" class="small">← 나가기</button><b id="du-title">1:1 내기 대결</b><span id="du-time"></span></div>
+    <div id="du-lobby" class="box lobby"><h3>대결 대기실 <small>⚡에너지 10</small></h3>
+      <div class="row" id="du-modes"><button data-mode="bomb" class="small b-rose sel">💣 폭탄 넘기기</button><button data-mode="draw" class="small b-blue">🎨 그림 그리기 대결</button></div>
+      <p id="du-rule" class="hint"></p>
+      <div class="row" id="du-stakes"><button data-stake="10" class="small">🪙10</button><button data-stake="30" class="small">🪙30</button><button data-stake="50" class="small">🪙50</button><button data-stake="100" class="small">🪙100</button></div>
+      <p class="hint">판돈을 누르면 테이블을 열어요 · 이기면 판돈 합계의 90% (수수료 10%) · 무승부/나가기는 환불 · 어린이·어른만</p>
+      <div id="du-tables"></div><button id="du-cancel" class="small hidden">내 테이블 닫기</button></div>
+    <div id="bomb-play" class="hidden">
+      <canvas id="bombCv" width="480" height="260"></canvas>
+      <div id="bomb-seq" class="seq"></div><div id="bomb-msg" class="hint"></div>
+      <div class="touch dpad" id="bomb-pad"><button data-d="left">◀</button><button data-d="up">▲</button><button data-d="down">▼</button><button data-d="right">▶</button></div>
+      <div class="hint">폭탄을 들고 있으면 화살표를 순서대로 입력해서 넘겨요! 틀리면 잠깐 멈춰요 · ← ↑ → ↓ / WASD</div>
+    </div>
+    <div id="draw-play" class="hidden">
+      <div id="draw-word" class="seq"></div>
+      <canvas id="drawCv" width="320" height="320"></canvas>
+      <div class="row" id="draw-pal"></div>
+      <div class="row" id="draw-tools"><button id="draw-clear" class="small">지우기</button><button id="draw-done" class="small b-green">다 그렸어요!</button></div>
+      <div id="draw-choices" class="row hidden"></div><div id="draw-msg" class="hint"></div>
+    </div>
   </section>
   <!-- SNAKE -->
   <section id="snake" class="screen hidden">
