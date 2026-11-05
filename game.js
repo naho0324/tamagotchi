@@ -4,7 +4,7 @@ const MIN = 60000;
 const CFG = {
   hatchMs: (typeof process !== 'undefined' && process.env && +process.env.HATCH_MS) || 2 * MIN, childMs: 10 * MIN, adultMs: 30 * MIN,
   decay: { hunger: 0.25, happy: 0.2, energy: 0.15, clean: 0.15 }, // per minute
-  sleepEnergy: 4, deathZeroMin: 720, sickThreshold: 15, sickChance: 0.25, rand: Math.random,
+  sleepEnergy: 4, sleepDecay: 0.25, deathZeroMin: 720, sickThreshold: 15, sickChance: 0.25, rand: Math.random,
 };
 const ITEM_FX = { snack: '배고픔 +40, 기분 +10', medicine: '병 치료', meal: '배고픔 가득, 기분 +5', drink: '체력 +60 (기분 -5)',
   soap: '청결 가득, 기분 +15', toy: '기분 +50 (체력 안 써요)', vitamin: '병 치료 + 1시간 동안 안 아파요' };
@@ -92,16 +92,16 @@ function newPlayer(id, nickname, now, char, custom, name) {
 function stepMinute(p, t) {
   if (p.stage === 'egg') { if (t - p.bornAt >= CFG.hatchMs) { p.stage = 'baby'; p.hatchedAt = p.bornAt + CFG.hatchMs; } return; }
   if (p.stage === 'dead') return;
-  const s = p.stats, m = p.sick ? 1.5 : 1, X = k => maxOf(p.char, k);
+  const s = p.stats, m = (p.sick ? 1.5 : 1) * (p.sleeping ? CFG.sleepDecay : 1), X = k => maxOf(p.char, k); // asleep: 25% decay
   s.hunger = clamp(s.hunger - CFG.decay.hunger * m, X('hunger'));
   s.happy = clamp(s.happy - CFG.decay.happy * m, X('happy'));
-  s.clean = clamp(s.clean - CFG.decay.clean, X('clean'));
-  if (p.sleeping) { s.energy = clamp(s.energy + CFG.sleepEnergy, X('energy')); if (s.energy >= X('energy')) p.sleeping = false; }
+  s.clean = clamp(s.clean - CFG.decay.clean * (p.sleeping ? CFG.sleepDecay : 1), X('clean'));
+  if (p.sleeping) s.energy = clamp(s.energy + CFG.sleepEnergy, X('energy')); // stays asleep until woken (night mode)
   else s.energy = clamp(s.energy - CFG.decay.energy * m, X('energy'));
   const mn = Math.min(s.hunger, s.happy, s.energy, s.clean);
   // low stats make the pet sick with some chance each minute (깔끔쟁이: half the chance)
   if (mn < CFG.sickThreshold && !p.sick && !((p.immuneUntil || 0) > t) && CFG.rand() < CFG.sickChance * (p.char === 1 ? 0.5 : 1)) p.sick = true;
-  if (mn <= 0) p.zeroMin++; else p.zeroMin = Math.max(0, p.zeroMin - 1);
+  if (mn <= 0) p.zeroMin++; else p.zeroMin = 0; // death timer resets as soon as every stat is above 0 again
   if (p.zeroMin >= CFG.deathZeroMin) { p.stage = 'dead'; p.sick = false; p.sleeping = false; return; }
   const age = t - p.hatchedAt;
   if (p.stage === 'baby' && age >= CFG.childMs) p.stage = 'child';
@@ -126,7 +126,7 @@ function act(player, action, arg, now) {
   const reward = (k, c) => { if (cd('coin_' + k, 15000)) { addCoins(player, c); p.careScore++; return c; } return 0; };
   switch (action) {
     case 'feed': if (!alive) return '알에서 나오면 할 수 있어요';
-      if (p.sleeping) return '자고 있어요 💤'; C('hunger', s.hunger + 25); return { msg: '냠냠! 배불러요' }; // no coins for feeding (v1.1)
+      if (p.sleeping) return '자고 있어요 💤'; C('hunger', s.hunger + 25); p.zeroMin = 0; return { msg: '냠냠! 배불러요' }; // no coins for feeding (v1.1)
     case 'play': if (!alive) return '알에서 나오면 할 수 있어요'; if (p.sleeping) return '자고 있어요 💤';
       if (s.energy < 10) return '너무 피곤해요...'; C('happy', s.happy + 20); C('energy', s.energy - 8); C('hunger', s.hunger - 3); p.playedAt = now;
       return { msg: '신나요!', coins: reward('play', 3) };
@@ -134,9 +134,9 @@ function act(player, action, arg, now) {
     case 'wash': if (!alive) return '알에서 나오면 할 수 있어요'; s.clean = X('clean'); return { msg: '뽀득뽀득 깨끗해요', coins: reward('wash', 2) };
     case 'use': {
       if (!alive) return '사용할 수 없어요'; if (!player.inventory[arg]) return '아이템이 없어요';
-      if (arg === 'snack') { C('hunger', s.hunger + 40); C('happy', s.happy + 10); }
+      if (arg === 'snack') { C('hunger', s.hunger + 40); C('happy', s.happy + 10); p.zeroMin = 0; }
       else if (arg === 'medicine') { if (!p.sick) return '아프지 않아요'; p.sick = false; p.zeroMin = 0; C('happy', s.happy + 5); }
-      else if (arg === 'meal') { if (p.sleeping) return '자고 있어요 💤'; C('hunger', X('hunger')); C('happy', s.happy + 5); }
+      else if (arg === 'meal') { if (p.sleeping) return '자고 있어요 💤'; C('hunger', X('hunger')); p.zeroMin = 0; C('happy', s.happy + 5); }
       else if (arg === 'drink') { C('energy', s.energy + 60); C('happy', s.happy - 5); p.sleeping = false; }
       else if (arg === 'soap') { C('clean', X('clean')); C('happy', s.happy + 15); }
       else if (arg === 'toy') { if (p.sleeping) return '자고 있어요 💤'; C('happy', s.happy + 50); }
