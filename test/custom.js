@@ -24,9 +24,10 @@ const q = G.newPlayer('e', 'n', now, 1, { eyes: 'x1' }); const c0 = q.coins; G.a
 p.pet.stage = 'dead'; r = G.act(p, 'restart', { char: 6, custom: { eyes: 'x1', color: 'lemon' }, name: '알콩' }, now); assert.ok(r.msg);
 assert.strictEqual(p.pet.stage, 'egg'); assert.strictEqual(p.pet.char, 6); assert.strictEqual(p.pet.custom.color, 'lemon'); assert.strictEqual(p.pet.name, '알콩');
 p.pet.stage = 'dead'; G.act(p, 'restart', null, now); assert.strictEqual(p.pet.char, 6); assert.strictEqual(p.pet.custom.eyes, 'x1');
-// every custom sprite exists: 3 eyes x 2 stages x 5 hairs x 6 outfits x (1+4 acc) = 900, plus pets
+// every custom sprite exists: 3 eyes x 2 stages x 10 hairs x 20 tops = 1200 whole sprites (accessories are layered from assets/acc), plus pets
 let n = 0; const root = path.join(__dirname, '../public/assets');
 for (const e of G.CUSTOM.eyes) { for (const st of ['egg', 'baby', 'child', 'adult']) assert.ok(fs.existsSync(`${root}/pets/${e}/${st}.png`), e + st);
-  for (const st of ['child', 'adult']) for (const h of G.HAIRS) for (const o of G.OUTFITS) for (const a of G.ACCS) { const f = `${root}/outfits/${e}/${st}/${h}_${o}${a === 'none' ? '' : '_' + a}.png`; assert.ok(fs.existsSync(f), f); n++; } }
-assert.strictEqual(n, 900);
+  for (const st of ['child', 'adult']) for (const h of G.HAIRS) for (const o of G.OUTFITS) { const f = `${root}/outfits/${e}/${st}/${h}_${o}.png`; assert.ok(fs.existsSync(f), f); n++; } }
+assert.strictEqual(n, 1200);
+for (const a of G.ACCS) if (a !== 'none') assert.ok(fs.existsSync(`${root}/acc/${a}.png`), a);
 console.log('custom ok', n, 'sprites');

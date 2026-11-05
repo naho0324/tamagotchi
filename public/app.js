@@ -119,7 +119,10 @@ document.querySelectorAll('.buttons button').forEach(b => b.onclick = () => {
 roomCv.onclick = () => { if (S && S.pet.stage === 'dead') openCreator('restart'); };
 const myLook = () => S.pet.custom && S.pet.custom.eyes ? S.pet.custom.eyes : S.pet.char, myColor = () => S.pet.custom ? S.pet.custom.color || 'mint' : '';
 function rcIcons(el) { const c = myColor(); if (!c || c === 'mint') return; el.querySelectorAll('img[data-rc]').forEach(im => recolorUrl(im.getAttribute('src'), c, u => { im.src = u; })); }
-const icon = (type, key) => `<img class="ico" data-rc="1" src="assets/outfits/${myLook()}/${S.pet.stage === 'adult' ? 'adult' : 'child'}/${type === 'hair' ? key + '_base' : type === 'acc' ? (key === 'none' ? 'base_base' : 'base_base_' + key) : 'base_' + key}.png" alt="">`;
+const isCustom = () => !!(S.pet.custom && S.pet.custom.eyes);
+const icon = (type, key) => { if (type === 'acc' && key !== 'none') return `<img class="ico acc" src="assets/acc/${key}.png" alt="">`; // v1.8 layered 머리장식 icon
+  const it = G.SHOP[type + '_' + key], who = it && it.customOnly && !isCustom() ? 'x1' : myLook(); // 기본 몸 전용 items: show on the base body
+  return `<img class="ico" data-rc="1" src="assets/outfits/${who}/${S.pet.stage === 'adult' ? 'adult' : 'child'}/${type === 'hair' ? key + '_base' : type === 'acc' ? 'base_base' : 'base_' + key}.png" alt="">`; };
 const itemIco = k => `<img class="ico it" src="assets/items/${k}.png" alt="">`;
 // 상점 = consumables only; 옷/헤어/머리장식/뽑기 live in 꾸미기 (wardrobe)
 function renderShop() {
@@ -136,7 +139,7 @@ function renderShop() {
   if (!have.length) il.innerHTML = '<p class="hint">가방이 비었어요</p>';
 }
 function gachaBox() { const R = G.GACHA.rates, gd = document.createElement('div'); gd.className = 'gacha-box';
-  gd.innerHTML = `<p class="hint">한 번에 🪙${G.GACHA.cost} · <b class="r-common">일반 ${R.common}%</b> 코인/간식 · <b class="r-rare">희귀 ${R.rare}%</b> 리본/꽃핀 · <b class="r-legend">전설 ${R.legend}%</b> 고양이귀(뽑기 전용)<br>중복이면 코인 환급 (희귀 +${G.GACHA.dupRefund.rare}, 전설 +${G.GACHA.dupRefund.legend}) · ${G.GACHA.pity}번 안에 전설 확정 (지금 ${S.gachaPity || 0}/${G.GACHA.pity})</p>`;
+  gd.innerHTML = `<p class="hint">한 번에 🪙${G.GACHA.cost} · <b class="r-common">일반 ${R.common}%</b> 코인/간식 · <b class="r-rare">희귀 ${R.rare}%</b> 리본·꽃핀·상의 ${G.GACHA.rare.length - 2}종 · <b class="r-legend">전설 ${R.legend}%</b> 고양이귀·천사링·상의 ${G.GACHA.legend.length - 2}종 (상의는 뽑기 전용)<br>중복이면 코인 환급 (희귀 +${G.GACHA.dupRefund.rare}, 전설 +${G.GACHA.dupRefund.legend}) · ${G.GACHA.pity}번 안에 전설 확정 (지금 ${S.gachaPity || 0}/${G.GACHA.pity})</p>`;
   const gb = document.createElement('button'); gb.id = 'gacha-btn'; gb.className = 'big b-purple'; gb.textContent = `🎰 뽑기 (🪙${G.GACHA.cost})`; gb.onclick = pullGacha; gd.appendChild(gb); return gd; }
 // ---- GACHA (뽑기): capsule shake -> rarity flash -> prize reveal ----
 function pullGacha() {
@@ -146,34 +149,34 @@ function pullGacha() {
   const m = $('#gacha-modal'), cap = $('#g-capsule'), out = $('#g-result'); m.classList.remove('hidden');
   m.dataset.rarity = r.rarity; cap.className = 'g-capsule shake'; out.className = 'g-result hidden'; $('#g-ok').disabled = true;
   setTimeout(() => { cap.className = 'g-capsule open r-' + r.rarity; }, 1100);
-  setTimeout(() => { const img = r.key ? `<img class="g-img" data-rc="1" src="assets/outfits/${myLook()}/${S.pet.stage === 'adult' ? 'adult' : 'child'}/base_base_${r.key}.png" alt="">` : `<div class="g-emoji">${r.item === 'snack' ? '🍪' : r.item === 'medicine' ? '💊' : '🪙'}</div>`;
-    out.innerHTML = `<div class="g-tier r-${r.rarity}">${'★'.repeat({ common: 1, rare: 2, legend: 3 }[r.rarity])} ${r.rarityKo}</div>${img}<div class="g-name">${r.name}</div><div class="hint">${r.dup ? `이미 있어요! 중복 환급 +${r.coins}코인` : r.isNew ? '새 머리장식! 바로 썼어요 ✨' : '가방/코인에 넣었어요'}</div>`;
+  setTimeout(() => { const gt = r.item && G.SHOP[r.item] && G.SHOP[r.item].type, img = gt === 'acc' ? `<img class="g-img" src="assets/acc/${r.key}.png" alt="">` : gt === 'outfit' ? `<img class="g-img" data-rc="1" src="assets/outfits/${isCustom() ? myLook() : 'x1'}/${S.pet.stage === 'adult' ? 'adult' : 'child'}/base_${r.key}.png" alt="">` : `<div class="g-emoji">${r.item === 'snack' ? '🍪' : r.item === 'medicine' ? '💊' : '🪙'}</div>`;
+    out.innerHTML = `<div class="g-tier r-${r.rarity}">${'★'.repeat({ common: 1, rare: 2, legend: 3 }[r.rarity])} ${r.rarityKo}</div>${img}<div class="g-name">${r.name}</div><div class="hint">${r.dup ? `이미 있어요! 중복 환급 +${r.coins}코인` : r.isNew ? (gt === 'outfit' ? '새 상의! 바로 입었어요 ✨' + (isCustom() ? '' : ' (기본 몸에서 보여요)') : '새 머리장식! 바로 썼어요 ✨') : '가방/코인에 넣었어요'}</div>`;
     out.className = 'g-result pop r-' + r.rarity; rcIcons(out); $('#g-ok').disabled = false; }, 1600); }
 $('#g-ok').onclick = () => closeModal('gacha-modal');
 $('#g-again').onclick = () => { closeModal('gacha-modal'); pullGacha(); };
 // ---- WARDROBE (꾸미기): 헤어/옷 tabs, live preview ----
 let wTab = 'hair', wTry = null; // wTry = {slot, k}: try-on preview of an unowned item (nothing bought or saved)
 const wcv = $('#wPreview'), wctx = wcv.getContext('2d');
-const BASE_KO = { hair: '기본 머리', outfit: '기본 옷', acc: '없음' };
+const BASE_KO = { hair: '기본 머리', outfit: '기본 상의', acc: '없음' };
 function openWardrobe() { wTry = null; renderWardrobe(); $('#wardrobe-modal').classList.remove('hidden'); }
 function renderWardrobe() { // 꾸미기 shop: owned -> tap to wear, not owned -> tap to try on, then 구매하기 buys (auto-wears)
   const tabs = $('#w-tabs'); tabs.innerHTML = '';
-  for (const [t, ko] of [['char', '캐릭터'], ['hair', '헤어'], ['outfit', '옷'], ['acc', '머리장식'], ['gacha', '뽑기 🎰']]) { const b = document.createElement('button'); b.className = 'small' + (t === wTab ? ' sel' : ''); b.textContent = ko; b.dataset.tab = t; b.onclick = () => { wTab = t; wTry = null; renderWardrobe(); }; tabs.appendChild(b); }
+  for (const [t, ko] of [['char', '캐릭터'], ['hair', '헤어'], ['outfit', '상의'], ['acc', '머리장식'], ['gacha', '뽑기 🎰']]) { const b = document.createElement('button'); b.className = 'small' + (t === wTab ? ' sel' : ''); b.textContent = ko; b.dataset.tab = t; b.onclick = () => { wTab = t; wTry = null; renderWardrobe(); }; tabs.appendChild(b); }
   renderTry();
   const list = $('#w-list'); list.innerHTML = ''; list.classList.toggle('gacha', wTab === 'gacha');
   if (wTab === 'char') { const d = document.createElement('div'); d.className = 'char-box'; const tr = G.TRAITS[S.pet.char], c = S.pet.custom;
     d.innerHTML = `<p><b>${esc(S.pet.name || '(이름 없음)')}</b> · ${c ? `기본 몸 · ${G.CUSTOM.eyesKo[c.eyes]} · ${G.CUSTOM.colorsKo[c.color]}` : `프리셋 ${S.pet.char}번`} · 성격 ${tr.name}</p>`;
     const b = document.createElement('button'); b.id = 'w-edit-char'; b.className = 'big b-green'; b.textContent = '✏️ 이름·모습 바꾸기'; b.onclick = () => openCreator('edit'); d.appendChild(b);
     list.appendChild(d); $('#w-note').textContent = S.pet.stage === 'egg' ? '알일 때는 성격도 바꿀 수 있어요' : '성격은 새 알에서만 정할 수 있어요'; return; }
-  if (wTab === 'gacha') { list.appendChild(gachaBox()); $('#w-note').textContent = '뽑기에서 나온 머리장식은 바로 써요'; return; }
+  if (wTab === 'gacha') { list.appendChild(gachaBox()); $('#w-note').textContent = '뽑기에서 나온 상의·머리장식은 바로 입어요'; return; }
   for (const k of { hair: G.HAIRS, outfit: G.OUTFITS, acc: G.ACCS }[wTab]) { const sk = wTab + '_' + k, it = G.SHOP[sk], own = G.ownKey(S, wTab, k), on = S[wTab] === k;
     const tr = wTry && wTry.slot === wTab && wTry.k === k; const b = document.createElement('button'); b.className = 'w-item' + (on ? ' on' : '') + (own ? '' : ' locked') + (tr ? ' try' : ''); b.dataset.item = wTab + ':' + k;
-    const price = it ? G.priceOf(S, sk) : 0, tag = on ? '착용중' : own ? '입기' : it.gacha ? '🎰 뽑기 전용' : `🪙${price}${price < it.price ? ' 반값' : ''}`;
-    b.innerHTML = `${icon(wTab, k)}<small>${k === 'base' || k === 'none' ? BASE_KO[wTab] : it.name}</small><em>${tag}</em>`;
+    const price = it ? G.priceOf(S, sk) : 0, tag = on ? '착용중' : own ? '입기' : it.gacha ? '🎰 뽑기 전용' : `🪙${price}${price < it.price ? ' 반값' : ''}`, xo = it && it.customOnly && !isCustom();
+    b.innerHTML = `${icon(wTab, k)}<small>${k === 'base' || k === 'none' ? BASE_KO[wTab] : it.name}</small><em>${tag}</em>${xo ? '<i class="x-only">기본 몸 전용</i>' : ''}`;
     b.onclick = () => { if (own) { wTry = null; act('equip', wTab + ':' + k); } else { wTry = tr ? null : { slot: wTab, k }; renderWardrobe(); } }; // unowned: tap = 미리보기 only
     list.appendChild(b); }
   rcIcons(list);
-  $('#w-note').textContent = ['egg', 'baby'].includes(S.pet.stage) ? '어린이가 되면 옷을 입어요 (미리보기)' : S.pet.stage === 'dead' ? '' : '가진 건 눌러서 입기 · 🪙 표시는 눌러서 미리 입어보기';
+  $('#w-note').textContent = ['egg', 'baby'].includes(S.pet.stage) ? '어린이가 되면 옷을 입어요 (미리보기)' : S.pet.stage === 'dead' ? '' : '가진 건 눌러서 입기 · 🪙 표시는 눌러서 미리 입어보기' + (!isCustom() && ['hair', 'outfit'].includes(wTab) ? ' · 새 헤어·상의는 기본 몸 전용이에요 (프리셋은 기본 차림으로 보여요)' : '');
 }
 function drawWardrobe(t) { const c = wctx; c.fillStyle = '#fff5f8'; c.fillRect(0, 0, wcv.width, wcv.height); c.fillStyle = '#fbe3ea'; c.fillRect(0, wcv.height - 26, wcv.width, 26);
   const stage = ['child', 'adult'].includes(S.pet.stage) ? S.pet.stage : 'child';

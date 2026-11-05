@@ -37,14 +37,33 @@ function recolorUrl(src, color, cb) { if (!SKIN[color] || color === 'mint') retu
   const im = new Image(); im.onload = () => { try { cb(_rcUrl[k] = recolorCanvas(im, color).toDataURL()); } catch { cb(src); } }; im.src = src; }
 function petSprite(char, stage) { const c = SPR[char] || SPR[1]; return c[stage] || c.baby; }
 // Whole-outfit sprites for child/adult: assets/outfits/<char>/<stage>/<hair>_<outfit>.png (200x260, feet at y=256)
-const OHAIR = ['base', 'pony', 'bob', 'pigtail', 'afro'], OOUT = ['base', 'hoodie', 'stripe', 'dress', 'hanbok', 'space'];
+const OHAIR = ['base', 'pony', 'bob', 'pigtail', 'afro'], OOUT = ['base', 'hoodie', 'stripe', 'dress', 'hanbok', 'space']; // preset (1-7) sprites
+// v1.8: custom body (x1-x3) has whole sprites for all 10 hairs x 20 tops; presets keep the old items only (new ones fall back to base)
+const XHAIR = OHAIR.concat(['long', 'bun', 'spiky', 'curly', 'braid']);
+const XOUT = OOUT.concat(['raincoat', 'xmas', 'sailor', 'dino', 'tux', 'chef', 'knight', 'idol', 'wizard', 'aodai', 'jersey', 'cardigan', 'bee', 'bear']);
 const OFIT = { adult: { top: 16, h: 240 }, child: { top: 106, h: 150 } }, OSPR = {};
-const OACC = ['crown', 'ribbon', 'flower', 'catears']; // head accessory variants: <hair>_<outfit>_<acc>.png (200x300, feet at y=296, 40px headroom)
+const OACC = ['crown', 'ribbon', 'flower', 'catears']; // presets: baked head accessory variants <hair>_<outfit>_<acc>.png (200x300, feet at y=296, 40px headroom)
+// layered head accessories (assets/acc/<key>.png): [width as fraction of head width, overlap onto the head as fraction of acc height, x shift as fraction of head width]
+const ACC_PL = { crown: [0.5, 0.35, 0], ribbon: [0.42, 0.45, 0.28], flower: [0.3, 0.5, 0.3], catears: [0.85, 0.5, 0], bunny: [0.6, 0.6, 0], beret: [0.8, 0.72, 0.05],
+  halo: [0.6, -0.35, 0], sprout: [0.28, 0.15, 0], partyhat: [0.38, 0.22, 0], headphones: [1.02, 0.76, 0] };
+const ACCIMG = {};
+function accImg(k) { if (!ACC_PL[k]) return null; let im = ACCIMG[k]; if (!im) { im = ACCIMG[k] = new Image(); im.src = `assets/acc/${k}.png`; } return im.complete && im.width ? im : null; }
+const isX = c => /^x[123]$/.test(c);
 function outfitSprite(char, stage, hair, outfit, acc) {
-  if (!OFIT[stage]) return null; char = SPR[char] ? char : 1; // char may be 'x1'..'x3' (custom body) hair = OHAIR.includes(hair) ? hair : 'base'; outfit = OOUT.includes(outfit) ? outfit : 'base';
-  const k = `${char}/${stage}/${hair}_${outfit}` + (OACC.includes(acc) ? `_${acc}` : ''); let im = OSPR[k];
+  if (!OFIT[stage]) return null; char = SPR[char] ? char : 1; const x = isX(char); // char may be 'x1'..'x3' (custom body)
+  hair = (x ? XHAIR : OHAIR).includes(hair) ? hair : 'base'; outfit = (x ? XOUT : OOUT).includes(outfit) ? outfit : 'base';
+  const k = `${char}/${stage}/${hair}_${outfit}` + (!x && OACC.includes(acc) ? `_${acc}` : ''); let im = OSPR[k];
   if (!im) { im = OSPR[k] = new Image(); im.src = `assets/outfits/${k}.png`; }
   return im.complete && im.width ? im : null; }
+const overlayAcc = (char, acc) => !!ACC_PL[acc] && (isX(char) || !OACC.includes(acc)); // custom: always layered; presets: only the new accessories
+function headAnchor(img) { // hair-aware head anchor on the 200x260 sprite: first row that is >= 55% of the widest head row (skips buns/spikes)
+  if (img._ha) return img._ha; const cv = document.createElement('canvas'); cv.width = img.width; cv.height = img.height; const x = cv.getContext('2d'); x.drawImage(img, 0, 0);
+  let d; try { d = x.getImageData(0, 0, cv.width, cv.height).data; } catch { return null; }
+  const W = cv.width, H = cv.height, row = y => { let a = -1, b = -1; for (let i = 0; i < W; i++) if (d[(y * W + i) * 4 + 3] > 8) { if (a < 0) a = i; b = i; } return [a, b]; };
+  let y0 = 0; while (y0 < H && row(y0)[0] < 0) y0++; let y1 = H - 1; while (y1 > y0 && row(y1)[0] < 0) y1--;
+  const fh = y1 - y0, band = []; for (let y = y0; y < y0 + Math.floor(fh * 0.38); y++) { const [a, b] = row(y); band.push(a < 0 ? [0, a, b] : [b - a + 1, a, b]); }
+  let mx = Math.max(...band.map(r => r[0])); const i = band.findIndex(r => r[0] >= 0.55 * mx); mx = Math.min(mx, 0.56 * fh);
+  return (img._ha = { y: y0 + i, cx: (band[i][1] + band[i][2]) / 2, hw: mx }); }
 let _tint = null;
 function tinted(img, color, a) { // cached tinted copy (sick)
   const key = '_t' + color; if (img[key]) return img[key];
@@ -78,6 +97,10 @@ function drawPet(ctx, cx, by, size, look, t = 0, opts = {}) {
   if (!opts.still) { ctx.fillStyle = 'rgba(29,37,87,.18)'; ctx.fillRect(cx - w * 0.3, by - px * 0.6, w * 0.6, px); }
   if (look.sleeping) ctx.globalAlpha = 0.8;
   ctx.drawImage(img, 0, sy, img.width, sh, Math.round(cx - w / 2), Math.round(top), Math.round(w), Math.round(h));
+  if (F && overlayAcc(lk, look.acc)) { const ai = accImg(look.acc), ha = ai && headAnchor(osp); // v1.8 layered 머리장식
+    if (ha) { const k = w / img.width, [f, dn, dx] = ACC_PL[look.acc], aw = ha.hw * f, ah = ai.height * aw / ai.width;
+      const ax = ha.cx - aw / 2 + ha.hw * dx, ay = ha.y - ah + ah * dn; // sprite coords
+      ctx.drawImage(ai, Math.round(cx - w / 2 + ax * k), Math.round(top + (ay - sy) * k), Math.round(aw * k), Math.round(ah * k)); } }
   ctx.globalAlpha = 1; ctx.imageSmoothingEnabled = prevSmooth;
   if (look.sleeping) { ctx.fillStyle = '#1d2557'; ctx.font = `${Math.round(px * 4)}px Galmuri11, monospace`; ctx.fillText('Z', cx + (F ? w * 0.36 : w / 2), ftop + px * 3 + Math.sin(t / 300) * px * 2); ctx.font = `${Math.round(px * 3)}px Galmuri11, monospace`; ctx.fillText('z', cx + (F ? w * 0.36 : w / 2) + 3 * px, ftop); }
   const fw = F ? w * 0.36 : w / 2; // outfit sprites have side padding

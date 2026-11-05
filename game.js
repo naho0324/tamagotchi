@@ -24,13 +24,34 @@ const SHOP = {
   acc_crown: { name: '왕관', price: 300, type: 'acc', key: 'crown' },
   acc_ribbon: { name: '리본', price: 150, type: 'acc', key: 'ribbon' }, acc_flower: { name: '꽃핀', price: 120, type: 'acc', key: 'flower' },
   acc_catears: { name: '고양이귀', price: 0, type: 'acc', key: 'catears', gacha: true }, // 뽑기 전용 (not sold)
+  // v1.8 옷장 확장: outfit slot = 상의(top). new hairs/tops are drawn for the custom body (기본 몸) only; presets fall back to base.
+  hair_long: { name: '긴생머리', price: 150, type: 'hair', key: 'long', customOnly: true }, hair_bun: { name: '똥머리', price: 150, type: 'hair', key: 'bun', customOnly: true },
+  hair_spiky: { name: '삐죽머리', price: 180, type: 'hair', key: 'spiky', customOnly: true }, hair_curly: { name: '웨이브', price: 200, type: 'hair', key: 'curly', customOnly: true },
+  hair_braid: { name: '땋은머리', price: 250, type: 'hair', key: 'braid', customOnly: true },
+  // new tops: 뽑기 전용 (rare/legend)
+  outfit_raincoat: { name: '우비', price: 0, type: 'outfit', key: 'raincoat', gacha: 'rare', customOnly: true }, outfit_xmas: { name: '크리스마스 니트', price: 0, type: 'outfit', key: 'xmas', gacha: 'rare', customOnly: true },
+  outfit_sailor: { name: '세일러복', price: 0, type: 'outfit', key: 'sailor', gacha: 'rare', customOnly: true }, outfit_dino: { name: '공룡 잠옷', price: 0, type: 'outfit', key: 'dino', gacha: 'rare', customOnly: true },
+  outfit_tux: { name: '턱시도', price: 0, type: 'outfit', key: 'tux', gacha: 'legend', customOnly: true }, outfit_chef: { name: '요리사복', price: 0, type: 'outfit', key: 'chef', gacha: 'rare', customOnly: true },
+  outfit_knight: { name: '기사 갑옷', price: 0, type: 'outfit', key: 'knight', gacha: 'legend', customOnly: true }, outfit_idol: { name: '아이돌 의상', price: 0, type: 'outfit', key: 'idol', gacha: 'legend', customOnly: true },
+  outfit_wizard: { name: '마법사 로브', price: 0, type: 'outfit', key: 'wizard', gacha: 'legend', customOnly: true }, outfit_aodai: { name: '아오자이', price: 0, type: 'outfit', key: 'aodai', gacha: 'legend', customOnly: true },
+  outfit_jersey: { name: '축구 유니폼', price: 0, type: 'outfit', key: 'jersey', gacha: 'rare', customOnly: true }, outfit_cardigan: { name: '카디건', price: 0, type: 'outfit', key: 'cardigan', gacha: 'rare', customOnly: true },
+  outfit_bee: { name: '꿀벌 옷', price: 0, type: 'outfit', key: 'bee', gacha: 'rare', customOnly: true }, outfit_bear: { name: '곰돌이 옷', price: 0, type: 'outfit', key: 'bear', gacha: 'rare', customOnly: true },
+  // new head accessories (layered on top of any hair/top)
+  acc_bunny: { name: '토끼귀', price: 200, type: 'acc', key: 'bunny' }, acc_beret: { name: '베레모', price: 180, type: 'acc', key: 'beret' },
+  acc_sprout: { name: '새싹', price: 120, type: 'acc', key: 'sprout' }, acc_partyhat: { name: '고깔모자', price: 150, type: 'acc', key: 'partyhat' },
+  acc_headphones: { name: '헤드폰', price: 250, type: 'acc', key: 'headphones' },
+  acc_halo: { name: '천사링', price: 0, type: 'acc', key: 'halo', gacha: 'legend' },
 };
 // v1.5 뽑기 (gacha): 60 coins/pull. 일반 70% (coins/snack), 희귀 25% (리본/꽃핀), 전설 5% (뽑기 전용 고양이귀).
 // Duplicate 희귀 -> +40 coins, duplicate 전설 -> +150 coins. Pity: 전설 guaranteed on the 30th pull without one.
 const GACHA = { cost: 60, pity: 30, rates: { common: 70, rare: 25, legend: 5 }, dupRefund: { rare: 40, legend: 150 },
   common: [{ coins: 20 }, { coins: 30 }, { coins: 45 }, { snack: 2 }, { medicine: 1 }], rare: ['acc_ribbon', 'acc_flower'], legend: ['acc_catears'] };
+for (const k in SHOP) if (SHOP[k].gacha === 'rare' || SHOP[k].gacha === 'legend') GACHA[SHOP[k].gacha].push(k); // v1.8: 뽑기 전용 상의/천사링
 const RARITY_KO = { common: '일반', rare: '희귀', legend: '전설' };
-const HAIRS = ['base', 'pony', 'bob', 'pigtail', 'afro'], OUTFITS = ['base', 'hoodie', 'stripe', 'dress', 'hanbok', 'space'], ACCS = ['none', 'crown', 'ribbon', 'flower', 'catears'];
+const HAIRS = ['base', 'pony', 'bob', 'pigtail', 'afro', 'long', 'bun', 'spiky', 'curly', 'braid'];
+const OUTFITS = ['base', 'hoodie', 'stripe', 'dress', 'hanbok', 'space', 'raincoat', 'xmas', 'sailor', 'dino', 'tux', 'chef', 'knight', 'idol', 'wizard', 'aodai', 'jersey', 'cardigan', 'bee', 'bear']; // outfit = 상의 (top)
+const ACCS = ['none', 'crown', 'ribbon', 'flower', 'catears', 'bunny', 'beret', 'halo', 'sprout', 'partyhat', 'headphones'];
+const BOTTOMS = ['none']; // TODO(하의): bottom slot placeholder - no bottom sprites yet (tops include black pants). Add bottom_* items + layering here later.
 const OLD_ITEMS = { hat_ribbon: 40, hat_crown: 80, cloth_blue: 50, cloth_pink: 50 }; // removed items: refunded on migration
 // traits per character (default max is 100 for everything)
 const TRAITS = {
@@ -62,6 +83,7 @@ function migrate(player) { // old saves: hat/clothes items are gone -> refund; a
   if (!HAIRS.includes(player.hair) || !ownKey(player, 'hair', player.hair)) player.hair = 'base';
   if (!OUTFITS.includes(player.outfit) || !ownKey(player, 'outfit', player.outfit)) player.outfit = 'base';
   if (!ACCS.includes(player.acc) || !ownKey(player, 'acc', player.acc)) player.acc = 'none'; // v1.4: head accessory (머리장식)
+  if (!BOTTOMS.includes(player.bottom)) player.bottom = 'none'; // v1.8 placeholder
   if (!Number.isInteger(player.gachaPity) || player.gachaPity < 0) player.gachaPity = 0; // v1.5: 뽑기 pity counter
   if (player.pet) { if ('custom' in player.pet) { const c = validCustom(player.pet.custom); if (c) player.pet.custom = c; else delete player.pet.custom; } // v1.7
     if ('name' in player.pet) { const n = cleanName(player.pet.name); if (n) player.pet.name = n; else delete player.pet.name; } }
@@ -86,7 +108,7 @@ function newPet(now, char, custom, name) {
     careScore: 0, cooldowns: {} };
 }
 function newPlayer(id, nickname, now, char, custom, name) {
-  const pl = { id, nickname, coins: 30, inventory: { snack: 1, medicine: 0 }, owned: [], hair: 'base', outfit: 'base', acc: 'none', gachaPity: 0, pet: newPet(now, char, custom, name), wins: 0 };
+  const pl = { id, nickname, coins: 30, inventory: { snack: 1, medicine: 0 }, owned: [], hair: 'base', outfit: 'base', bottom: 'none', acc: 'none', gachaPity: 0, pet: newPet(now, char, custom, name), wins: 0 };
   if (pl.pet.char === 4) { pl.coins *= 2; pl.pet.richBonus = 1; } return pl;
 }
 function stepMinute(p, t) {
@@ -195,6 +217,6 @@ function miniCoins(game, score) { score = Math.floor(+score);
   if (game === 'memory') return score >= 8 && score <= 200 ? Math.max(10, Math.min(25, 25 - (score - 8))) : 0; // score = moves (8 = perfect)
   if (game === 'pop') return score >= 0 && score <= MINI.pop.maxScore ? (score < 5 ? 5 : Math.min(25, 10 + Math.floor((score - 5) / 3))) : 0; // score = hearts tapped
   return 0; }
-const api = { CUSTOM, validCustom, setLook, cleanName, MINI, miniCoins, NCHAR, MIN, newPlayer, newPet, update, act, SHOP, CFG, POWER, publicPet, sanitizeSnap, snapOf, clamp, HAIRS, OUTFITS, ACCS, ITEM_FX, CONSUMABLES, GACHA, RARITY_KO, gacha, TRAITS, COIN_CAP, maxOf, coinCap, raidHpOf, raidAtkOf, addCoins, priceOf, migrate, ownKey };
+const api = { CUSTOM, validCustom, setLook, cleanName, MINI, miniCoins, NCHAR, MIN, newPlayer, newPet, update, act, SHOP, CFG, POWER, publicPet, sanitizeSnap, snapOf, clamp, HAIRS, OUTFITS, ACCS, BOTTOMS, ITEM_FX, CONSUMABLES, GACHA, RARITY_KO, gacha, TRAITS, COIN_CAP, maxOf, coinCap, raidHpOf, raidAtkOf, addCoins, priceOf, migrate, ownKey };
 if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.Game = api;
 })(typeof window !== 'undefined' ? window : globalThis);
