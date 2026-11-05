@@ -97,6 +97,12 @@
   <button class="big b-blue" onclick="closeModal('wardrobe-modal')">닫기</button></div></div>
 <div id="gacha-modal" class="modal hidden"><div class="box gacha"><h2>뽑기!</h2><div id="g-capsule" class="g-capsule"></div><div id="g-result" class="g-result hidden"></div>
   <div class="row"><button id="g-again" class="small b-purple">한 번 더</button><button id="g-ok" class="small b-green">확인</button></div></div></div>
+<div id="creator-modal" class="modal hidden"><div class="box creator"><h2 id="cr-title">나만의 펫 만들기</h2><canvas id="crPreview" width="240" height="220"></canvas>
+  <input id="cr-name" maxlength="10" placeholder="펫 이름 (비워도 돼요)">
+  <h3>몸</h3><div id="cr-body" class="cr-row"></div>
+  <div id="cr-custom"><h3>눈·표정</h3><div id="cr-eyes" class="cr-row"></div><h3>몸 색깔</h3><div id="cr-colors" class="cr-row"></div></div>
+  <h3>성격</h3><div id="cr-trait" class="cr-row"></div><p id="cr-tdesc" class="hint"></p>
+  <button id="cr-ok" class="big b-green">이 펫으로 시작!</button><button id="cr-cancel" class="small">취소</button></div></div>
 <div id="backup-modal" class="modal hidden"><div class="box"><h2>백업</h2>
   <h3>내보내기</h3><p class="hint">이 코드를 복사해 두면 다른 기기에서 펫을 불러올 수 있어요</p><textarea id="bk-export" readonly rows="3"></textarea><button id="bk-copy" class="small">📋 복사</button>
   <h3>불러오기</h3><textarea id="bk-import" rows="3" placeholder="백업 코드 붙여넣기 (TG1.…)"></textarea><button id="bk-load" class="small">불러오기</button>

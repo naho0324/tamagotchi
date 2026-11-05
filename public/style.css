@@ -71,3 +71,12 @@ textarea { width: 100%; box-sizing: border-box; font: 11px monospace; border: 3p
 @keyframes gpop{0%{transform:scale(.2);opacity:0}70%{transform:scale(1.15)}100%{transform:scale(1);opacity:1}}
 .w-item.locked{background:#f3f0f6}.w-item.locked img{opacity:.55}.w-item.locked em{color:#7a5a00}.w-list.gacha{display:block}#shop-to-decor{width:100%;margin:8px 0}
 .ico.it{width:32px;height:32px;image-rendering:pixelated;vertical-align:middle;margin-right:6px}.it-txt{display:inline-flex;flex-direction:column;vertical-align:middle}.it-txt .fx{color:#6b6f8a;font-size:11px}
+
+/* v1.7 creator */
+.creator{max-height:92vh;overflow-y:auto}.creator h3{margin:8px 0 4px}#crPreview{display:block;margin:0 auto;image-rendering:pixelated;border-radius:8px}
+#cr-name{width:100%;box-sizing:border-box;margin-top:6px}
+.cr-row{display:flex;flex-wrap:wrap;gap:4px;justify-content:center}
+.cr-opt{display:flex;flex-direction:column;align-items:center;min-width:52px;padding:4px;border:2px solid #d9d2e6;border-radius:8px;background:#fff;font-family:inherit;cursor:pointer}
+.cr-opt.sel{border-color:#ff6fa3;background:#fff0f6}.cr-opt:disabled{opacity:.4}.cr-opt img{height:40px;image-rendering:pixelated}.cr-opt small{font-size:11px}
+.cr-opt .sw{display:block;width:26px;height:26px;border-radius:50%;border:2px solid #1d2557}
+.char-box{text-align:center;padding:8px}

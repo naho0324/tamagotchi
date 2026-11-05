@@ -29,6 +29,7 @@ function getIdentity() { const id = localStorage.getItem('tg_pid'), nick = local
 function start() {
   const ident = getIdentity();
   if (!ident) { $('#nick-modal').classList.remove('hidden'); $('#nick').focus(); return; }
+  { let p = null; try { p = JSON.parse(localStorage.getItem(SAVE_KEY)); } catch {} if (!validSave(p)) return openCreator('new'); } // first time: 캐릭터 만들기
   S = loadSave(ident); prevStage = S.pet.stage; tickSim(); renderHud();
   socket = io({ auth: ident, transports: ['websocket'] });
   socket.on('connect_error', e => toast('연결 실패: ' + e.message));
@@ -52,7 +53,7 @@ function renderHud() {
   $('#coins').textContent = S.coins;
   for (const k of ['hunger', 'happy', 'energy', 'clean']) { const v = S.pet.stats[k], mx = G.maxOf(S.pet.char, k), el = $('#b-' + k); el.style.width = (v / mx * 100) + '%'; $('#n-' + k).textContent = `${Math.round(v)}/${mx}`; el.classList.toggle('low', v < 25 && !['egg','dead'].includes(S.pet.stage)); }
   { const tr = G.TRAITS[S.pet.char]; $('#trait').innerHTML = `<b>✨ ${tr.name}</b> ${tr.desc}`; }
-  const p = S.pet; let st = `${S.nickname}의 펫 · ${STAGE_KO[p.stage]}`;
+  const p = S.pet; let st = `${S.nickname}의 ${p.name ? p.name : '펫'} · ${STAGE_KO[p.stage]}`;
   if (p.stage === 'egg') { const left = Math.max(0, Math.ceil((p.bornAt + G.CFG.hatchMs - Date.now()) / 1000)); st += ` · 부화까지 ${left}초`; }
   if (p.sick) st += ' · 아파요! 약이 필요해요'; if (p.sleeping) st += ' · 자는 중'; if (p.stage === 'dead') st += ' · 화면을 눌러 다시 시작';
   $('#status').textContent = st;
@@ -115,8 +116,10 @@ document.querySelectorAll('.buttons button').forEach(b => b.onclick = () => {
   else if (a === 'wardrobe') openWardrobe();
   else act(a);
 });
-roomCv.onclick = () => { if (S && S.pet.stage === 'dead') act('restart'); };
-const icon = (type, key) => `<img class="ico" src="assets/outfits/${S.pet.char}/${S.pet.stage === 'adult' ? 'adult' : 'child'}/${type === 'hair' ? key + '_base' : type === 'acc' ? (key === 'none' ? 'base_base' : 'base_base_' + key) : 'base_' + key}.png" alt="">`;
+roomCv.onclick = () => { if (S && S.pet.stage === 'dead') openCreator('restart'); };
+const myLook = () => S.pet.custom && S.pet.custom.eyes ? S.pet.custom.eyes : S.pet.char, myColor = () => S.pet.custom ? S.pet.custom.color || 'mint' : '';
+function rcIcons(el) { const c = myColor(); if (!c || c === 'mint') return; el.querySelectorAll('img[data-rc]').forEach(im => recolorUrl(im.getAttribute('src'), c, u => { im.src = u; })); }
+const icon = (type, key) => `<img class="ico" data-rc="1" src="assets/outfits/${myLook()}/${S.pet.stage === 'adult' ? 'adult' : 'child'}/${type === 'hair' ? key + '_base' : type === 'acc' ? (key === 'none' ? 'base_base' : 'base_base_' + key) : 'base_' + key}.png" alt="">`;
 const itemIco = k => `<img class="ico it" src="assets/items/${k}.png" alt="">`;
 // 상점 = consumables only; 옷/헤어/머리장식/뽑기 live in 꾸미기 (wardrobe)
 function renderShop() {
@@ -143,9 +146,9 @@ function pullGacha() {
   const m = $('#gacha-modal'), cap = $('#g-capsule'), out = $('#g-result'); m.classList.remove('hidden');
   m.dataset.rarity = r.rarity; cap.className = 'g-capsule shake'; out.className = 'g-result hidden'; $('#g-ok').disabled = true;
   setTimeout(() => { cap.className = 'g-capsule open r-' + r.rarity; }, 1100);
-  setTimeout(() => { const img = r.key ? `<img class="g-img" src="assets/outfits/${S.pet.char}/${S.pet.stage === 'adult' ? 'adult' : 'child'}/base_base_${r.key}.png" alt="">` : `<div class="g-emoji">${r.item === 'snack' ? '🍪' : r.item === 'medicine' ? '💊' : '🪙'}</div>`;
+  setTimeout(() => { const img = r.key ? `<img class="g-img" data-rc="1" src="assets/outfits/${myLook()}/${S.pet.stage === 'adult' ? 'adult' : 'child'}/base_base_${r.key}.png" alt="">` : `<div class="g-emoji">${r.item === 'snack' ? '🍪' : r.item === 'medicine' ? '💊' : '🪙'}</div>`;
     out.innerHTML = `<div class="g-tier r-${r.rarity}">${'★'.repeat({ common: 1, rare: 2, legend: 3 }[r.rarity])} ${r.rarityKo}</div>${img}<div class="g-name">${r.name}</div><div class="hint">${r.dup ? `이미 있어요! 중복 환급 +${r.coins}코인` : r.isNew ? '새 머리장식! 바로 썼어요 ✨' : '가방/코인에 넣었어요'}</div>`;
-    out.className = 'g-result pop r-' + r.rarity; $('#g-ok').disabled = false; }, 1600); }
+    out.className = 'g-result pop r-' + r.rarity; rcIcons(out); $('#g-ok').disabled = false; }, 1600); }
 $('#g-ok').onclick = () => closeModal('gacha-modal');
 $('#g-again').onclick = () => { closeModal('gacha-modal'); pullGacha(); };
 // ---- WARDROBE (꾸미기): 헤어/옷 tabs, live preview ----
@@ -154,8 +157,12 @@ const BASE_KO = { hair: '기본 머리', outfit: '기본 옷', acc: '없음' };
 function openWardrobe() { renderWardrobe(); $('#wardrobe-modal').classList.remove('hidden'); }
 function renderWardrobe() { // 꾸미기 shop: owned -> tap to wear, not owned -> tap to buy (auto-wears)
   const tabs = $('#w-tabs'); tabs.innerHTML = '';
-  for (const [t, ko] of [['hair', '헤어'], ['outfit', '옷'], ['acc', '머리장식'], ['gacha', '뽑기 🎰']]) { const b = document.createElement('button'); b.className = 'small' + (t === wTab ? ' sel' : ''); b.textContent = ko; b.dataset.tab = t; b.onclick = () => { wTab = t; renderWardrobe(); }; tabs.appendChild(b); }
+  for (const [t, ko] of [['char', '캐릭터'], ['hair', '헤어'], ['outfit', '옷'], ['acc', '머리장식'], ['gacha', '뽑기 🎰']]) { const b = document.createElement('button'); b.className = 'small' + (t === wTab ? ' sel' : ''); b.textContent = ko; b.dataset.tab = t; b.onclick = () => { wTab = t; renderWardrobe(); }; tabs.appendChild(b); }
   const list = $('#w-list'); list.innerHTML = ''; list.classList.toggle('gacha', wTab === 'gacha');
+  if (wTab === 'char') { const d = document.createElement('div'); d.className = 'char-box'; const tr = G.TRAITS[S.pet.char], c = S.pet.custom;
+    d.innerHTML = `<p><b>${esc(S.pet.name || '(이름 없음)')}</b> · ${c ? `기본 몸 · ${G.CUSTOM.eyesKo[c.eyes]} · ${G.CUSTOM.colorsKo[c.color]}` : `프리셋 ${S.pet.char}번`} · 성격 ${tr.name}</p>`;
+    const b = document.createElement('button'); b.id = 'w-edit-char'; b.className = 'big b-green'; b.textContent = '✏️ 이름·모습 바꾸기'; b.onclick = () => openCreator('edit'); d.appendChild(b);
+    list.appendChild(d); $('#w-note').textContent = S.pet.stage === 'egg' ? '알일 때는 성격도 바꿀 수 있어요' : '성격은 새 알에서만 정할 수 있어요'; return; }
   if (wTab === 'gacha') { list.appendChild(gachaBox()); $('#w-note').textContent = '뽑기에서 나온 머리장식은 바로 써요'; return; }
   for (const k of { hair: G.HAIRS, outfit: G.OUTFITS, acc: G.ACCS }[wTab]) { const sk = wTab + '_' + k, it = G.SHOP[sk], own = G.ownKey(S, wTab, k), on = S[wTab] === k;
     const b = document.createElement('button'); b.className = 'w-item' + (on ? ' on' : '') + (own ? '' : ' locked'); b.dataset.item = wTab + ':' + k;
@@ -163,6 +170,7 @@ function renderWardrobe() { // 꾸미기 shop: owned -> tap to wear, not owned -
     b.innerHTML = `${icon(wTab, k)}<small>${k === 'base' || k === 'none' ? BASE_KO[wTab] : it.name}</small><em>${tag}</em>`;
     b.onclick = () => own ? act('equip', wTab + ':' + k) : it.gacha ? (wTab = 'gacha', renderWardrobe(), toast('뽑기에서만 나와요!')) : act('buy', sk);
     list.appendChild(b); }
+  rcIcons(list);
   $('#w-note').textContent = ['egg', 'baby'].includes(S.pet.stage) ? '어린이가 되면 옷을 입어요 (미리보기)' : S.pet.stage === 'dead' ? '' : '입은 옷은 눌러서 갈아입기 · 🪙 표시는 눌러서 사기';
 }
 function drawWardrobe(t) { const c = wctx; c.fillStyle = '#fff5f8'; c.fillRect(0, 0, wcv.width, wcv.height); c.fillStyle = '#fbe3ea'; c.fillRect(0, wcv.height - 26, wcv.width, 26);
@@ -467,7 +475,7 @@ function loop(t) {
   if (!$('#raid').classList.contains('hidden')) { raidTick(); drawRaid(t); }
   requestAnimationFrame(loop);
 }
-requestAnimationFrame(loop); start();
+requestAnimationFrame(loop);
 
 // ---- SINGLE-PLAYER MINIGAMES (v1.2): 짝맞추기 + 하트 팡팡 ----
 const mcv = $('#mCv'), mctx = mcv.getContext('2d'); mctx.imageSmoothingEnabled = false; let MG = null;
@@ -591,3 +599,42 @@ function bkIcon(c, x, y, kind) { const [col, px] = BK_ITEM[kind] || BK_ITEM.wide
   c.fillStyle = '#1d2557'; c.fillRect(x - 11, y - 7, 22, 14); c.fillStyle = col; c.fillRect(x - 9, y - 5, 18, 10);
   c.fillStyle = '#fff'; px.forEach((row, r) => [...row].forEach((v, k) => { if (v === '1') c.fillRect(x - 5 + k * 2, y - 5 + r * 2, 2, 2); })); }
 (function bkLoop(t) { drawBreakout(t); requestAnimationFrame(bkLoop); })(performance.now());
+
+// ---- CREATOR (캐릭터 만들기, v1.7): 프리셋 7종 또는 기본 몸(눈·표정 + 몸 색깔) + 이름 + 성격 ----
+const esc = t => String(t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+let CR = null; const crcv = $('#crPreview'), crctx = crcv.getContext('2d');
+function openCreator(mode) {
+  const p = S && S.pet, c = p && p.custom;
+  CR = { mode, body: c ? 'custom' : mode === 'new' ? 'custom' : p.char, eyes: c ? c.eyes : 'x1', color: c ? c.color : 'mint', char: p ? p.char : 1, name: p && p.name || '' };
+  $('#cr-title').textContent = mode === 'edit' ? '캐릭터 바꾸기' : mode === 'restart' ? '새 알 만들기' : '나만의 펫 만들기';
+  $('#cr-ok').textContent = mode === 'edit' ? '저장하기' : '이 펫으로 시작!'; $('#cr-cancel').classList.toggle('hidden', mode === 'new');
+  $('#cr-name').value = CR.name; renderCreator(); $('#creator-modal').classList.remove('hidden'); }
+const traitLocked = () => CR.mode === 'edit' && S.pet.stage !== 'egg';
+function crBtn(parent, html, sel, on, data) { const b = document.createElement('button'); b.className = 'cr-opt' + (sel ? ' sel' : ''); b.innerHTML = html; b.onclick = on; if (data) b.dataset.opt = data; parent.appendChild(b); return b; }
+function renderCreator() {
+  const body = $('#cr-body'); body.innerHTML = '';
+  const bodies = CR.mode === 'edit' && traitLocked() ? [S.pet.char, 'custom'] : [1, 2, 3, 4, 5, 6, 7, 'custom'];
+  for (const k of bodies) crBtn(body, k === 'custom' ? '<img src="assets/pets/x1/child.png" alt=""><small>기본 몸</small>' : `<img src="assets/pets/${k}/child.png" alt=""><small>${G.TRAITS[k].name}</small>`, CR.body === k,
+    () => { CR.body = k; if (k !== 'custom') CR.char = k; renderCreator(); }, 'body:' + k);
+  $('#cr-custom').classList.toggle('hidden', CR.body !== 'custom');
+  const ey = $('#cr-eyes'); ey.innerHTML = '';
+  for (const e of G.CUSTOM.eyes) crBtn(ey, `<img data-rc="1" src="assets/pets/${e}/baby.png" alt=""><small>${G.CUSTOM.eyesKo[e]}</small>`, CR.eyes === e, () => { CR.eyes = e; renderCreator(); }, 'eyes:' + e);
+  const co = $('#cr-colors'); co.innerHTML = '';
+  for (const [k, hex] of Object.entries(G.CUSTOM.colors)) crBtn(co, `<i class="sw" style="background:${hex}"></i><small>${G.CUSTOM.colorsKo[k]}</small>`, CR.color === k, () => { CR.color = k; renderCreator(); }, 'color:' + k);
+  if (CR.color !== 'mint') ey.querySelectorAll('img[data-rc]').forEach(im => recolorUrl(im.getAttribute('src'), CR.color, u => { im.src = u; }));
+  const tr = $('#cr-trait'); tr.innerHTML = ''; const lock = traitLocked() || CR.body !== 'custom';
+  for (let k = 1; k <= G.NCHAR; k++) { const b = crBtn(tr, `<small>${G.TRAITS[k].name}</small>`, CR.char === k, () => { if (lock) return toast(traitLocked() ? '성격은 새 알에서만 바꿀 수 있어요' : '프리셋은 성격이 정해져 있어요'); CR.char = k; renderCreator(); }, 'trait:' + k); if (lock && CR.char !== k) b.disabled = true; }
+  $('#cr-tdesc').textContent = '✨ ' + G.TRAITS[CR.char].desc + (traitLocked() ? ' (성격은 새 알에서만 바꿀 수 있어요)' : CR.body !== 'custom' ? ' (프리셋 고유 성격)' : '');
+}
+function drawCreator(t) { const c = crctx; c.fillStyle = '#fff5f8'; c.fillRect(0, 0, crcv.width, crcv.height); c.fillStyle = '#fbe3ea'; c.fillRect(0, crcv.height - 24, crcv.width, 24);
+  const lk = CR.body === 'custom' ? { char: CR.char, custom: { eyes: CR.eyes, color: CR.color } } : { char: CR.body };
+  drawPet(c, crcv.width / 2, crcv.height - 12, 170, { ...lk, stage: 'child', hair: 'base', outfit: 'base', acc: 'none' }, t, { still: true }); }
+$('#cr-ok').onclick = () => {
+  const name = G.cleanName($('#cr-name').value), custom = CR.body === 'custom' ? { eyes: CR.eyes, color: CR.color } : null, char = CR.body === 'custom' ? CR.char : CR.body;
+  closeModal('creator-modal');
+  if (CR.mode === 'new') { const ident = getIdentity(); localStorage.setItem(SAVE_KEY, JSON.stringify(G.newPlayer(ident.playerId, ident.nickname, Date.now(), char, custom, name))); start(); return; }
+  if (CR.mode === 'restart') return act('restart', { char, custom, name });
+  act('look', { name, custom, ...(traitLocked() ? {} : { char }) }); };
+$('#cr-cancel').onclick = () => closeModal('creator-modal');
+(function crLoop(t) { if (CR && !$('#creator-modal').classList.contains('hidden')) drawCreator(t); requestAnimationFrame(crLoop); })(0);
+start(); // after creator code is defined

@@ -63,16 +63,31 @@ function migrate(player) { // old saves: hat/clothes items are gone -> refund; a
   if (!OUTFITS.includes(player.outfit) || !ownKey(player, 'outfit', player.outfit)) player.outfit = 'base';
   if (!ACCS.includes(player.acc) || !ownKey(player, 'acc', player.acc)) player.acc = 'none'; // v1.4: head accessory (머리장식)
   if (!Number.isInteger(player.gachaPity) || player.gachaPity < 0) player.gachaPity = 0; // v1.5: 뽑기 pity counter
+  if (player.pet) { if ('custom' in player.pet) { const c = validCustom(player.pet.custom); if (c) player.pet.custom = c; else delete player.pet.custom; } // v1.7
+    if ('name' in player.pet) { const n = cleanName(player.pet.name); if (n) player.pet.name = n; else delete player.pet.name; } }
   delete player.wearing; }
 const validChar = c => Number.isInteger(+c) && +c >= 1 && +c <= NCHAR;
-function newPet(now, char) {
-  return { stage: 'egg', char: validChar(char) ? +char : 1 + Math.floor(Math.random() * NCHAR), bornAt: now, hatchedAt: null, lastUpdate: now, style: Math.floor(Math.random() * 6),
+// v1.7 custom character (기본 몸): eyes = whole-sprite face set, color = runtime palette swap of the mint skin
+const CUSTOM = { eyes: ['x1', 'x2', 'x3'], eyesKo: { x1: '동글눈', x2: '웃는눈', x3: '점눈' },
+  colors: { mint: '#9ee8c0', peach: '#ffc9a8', sky: '#a8d8ff', lilac: '#d3b8ff', lemon: '#fff09a', pink: '#ffb8d6', cocoa: '#c89a78', snow: '#f2f2f2' },
+  colorsKo: { mint: '민트', peach: '복숭아', sky: '하늘', lilac: '라일락', lemon: '레몬', pink: '분홍', cocoa: '코코아', snow: '눈송이' } };
+function validCustom(c) { if (!c || typeof c !== 'object' || !CUSTOM.eyes.includes(c.eyes)) return null;
+  return { eyes: c.eyes, color: CUSTOM.colors[c.color] ? c.color : 'mint' }; }
+const cleanName = n => typeof n === 'string' ? n.replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, 10) : '';
+function setLook(player, o) { o = o || {}; const p = player.pet; // edit later (꾸미기 > 캐릭터): name + body; 성격 only for a fresh egg
+  if ('name' in o) p.name = cleanName(o.name);
+  if ('custom' in o) { const c = validCustom(o.custom); if (c) p.custom = c; else delete p.custom; }
+  if ('char' in o && validChar(o.char) && p.stage === 'egg') { const was = p.char; p.char = +o.char; if (was !== 4 && p.char === 4 && !p.richBonus) { p.richBonus = 1; addCoins(player, 30); } }
+  return { msg: '캐릭터를 바꿨어요!' }; }
+function newPet(now, char, custom, name) {
+  const c = validCustom(custom), nm = cleanName(name);
+  return { ...(c ? { custom: c } : {}), ...(nm ? { name: nm } : {}), stage: 'egg', char: validChar(char) ? +char : 1 + Math.floor(Math.random() * NCHAR), bornAt: now, hatchedAt: null, lastUpdate: now, style: Math.floor(Math.random() * 6),
     stats: { hunger: 80, happy: 80, energy: 80, clean: 80 }, sick: false, sleeping: false, zeroMin: 0,
     careScore: 0, cooldowns: {} };
 }
-function newPlayer(id, nickname, now, char) {
-  const pl = { id, nickname, coins: 30, inventory: { snack: 1, medicine: 0 }, owned: [], hair: 'base', outfit: 'base', acc: 'none', gachaPity: 0, pet: newPet(now, char), wins: 0 };
-  if (pl.pet.char === 4) pl.coins *= 2; return pl;
+function newPlayer(id, nickname, now, char, custom, name) {
+  const pl = { id, nickname, coins: 30, inventory: { snack: 1, medicine: 0 }, owned: [], hair: 'base', outfit: 'base', acc: 'none', gachaPity: 0, pet: newPet(now, char, custom, name), wins: 0 };
+  if (pl.pet.char === 4) { pl.coins *= 2; pl.pet.richBonus = 1; } return pl;
 }
 function stepMinute(p, t) {
   if (p.stage === 'egg') { if (t - p.bornAt >= CFG.hatchMs) { p.stage = 'baby'; p.hatchedAt = p.bornAt + CFG.hatchMs; } return; }
@@ -143,7 +158,8 @@ function act(player, action, arg, now) {
       player[type] = key; return { msg: '갈아입었어요!' };
     }
     case 'gacha': return gacha(player);
-    case 'restart': if (p.stage !== 'dead') return '아직 살아있어요'; player.pet = newPet(now); return { msg: '새 알이 왔어요!' };
+    case 'look': return setLook(player, arg);
+    case 'restart': if (p.stage !== 'dead') return '아직 살아있어요'; { const o = arg && typeof arg === 'object' ? arg : {}; player.pet = newPet(now, 'char' in o ? o.char : p.char, 'custom' in o ? o.custom : p.custom, 'name' in o ? o.name : p.name); } return { msg: '새 알이 왔어요!' };
   }
   return '알 수 없는 행동';
 }
@@ -162,23 +178,23 @@ function gacha(player, rnd = Math.random) {
     else { player.owned.push(k); player[it.type] = it.key; res.isNew = true; } }
   res.msg = `[${res.rarityKo}] ${res.name}` + (res.dup ? ` (중복! +${res.coins}코인)` : res.isNew ? ' 획득! 바로 썼어요' : ' 획득!');
   return res; }
-function publicPet(pl) { return { nickname: pl.nickname, stage: pl.pet.stage, char: pl.pet.char, style: pl.pet.style, hair: pl.hair, outfit: pl.outfit, acc: pl.acc || 'none', sick: pl.pet.sick, sleeping: pl.pet.sleeping }; }
+function publicPet(pl) { return { nickname: pl.nickname, custom: validCustom(pl.pet.custom), petName: cleanName(pl.pet.name), stage: pl.pet.stage, char: pl.pet.char, style: pl.pet.style, hair: pl.hair, outfit: pl.outfit, acc: pl.acc || 'none', sick: pl.pet.sick, sleeping: pl.pet.sleeping }; }
 const POWER = { egg: 0.5, baby: 1, child: 1.5, adult: 2.2 }; // raid damage multiplier by growth stage
 const STAGES = ['egg', 'baby', 'child', 'adult', 'dead'];
 // Light sanity check of a client-sent pet snapshot (cheating is accepted; this only keeps values in range).
 function sanitizeSnap(s, nickname) {
   s = s && typeof s === 'object' ? s : {}; const st = s.stats || {}, char = validChar(s.char) ? +s.char : 1, num = (v, k) => clamp(Number.isFinite(+v) ? +v : 0, maxOf(char, k));
-  return { nickname: String(nickname || s.nickname || '손님').slice(0, 12), char, stage: STAGES.includes(s.stage) ? s.stage : 'egg',
+  return { nickname: String(nickname || s.nickname || '손님').slice(0, 12), char, custom: validCustom(s.custom), petName: cleanName(s.petName), stage: STAGES.includes(s.stage) ? s.stage : 'egg',
     stats: { hunger: num(st.hunger, 'hunger'), happy: num(st.happy, 'happy'), energy: num(st.energy, 'energy'), clean: num(st.clean, 'clean') }, sick: !!s.sick, sleeping: !!s.sleeping,
     hair: HAIRS.includes(s.hair) ? s.hair : 'base', outfit: OUTFITS.includes(s.outfit) ? s.outfit : 'base', acc: ACCS.includes(s.acc) ? s.acc : 'none' };
 }
-function snapOf(player) { const p = player.pet; return { nickname: player.nickname, char: p.char, stage: p.stage, stats: { ...p.stats }, sick: p.sick, sleeping: p.sleeping, hair: player.hair || 'base', outfit: player.outfit || 'base', acc: player.acc || 'none' }; }
+function snapOf(player) { const p = player.pet; return { nickname: player.nickname, char: p.char, custom: validCustom(p.custom), petName: cleanName(p.name), stage: p.stage, stats: { ...p.stats }, sick: p.sick, sleeping: p.sleeping, hair: player.hair || 'base', outfit: player.outfit || 'base', acc: player.acc || 'none' }; }
 // single-player minigames (v1.2): cheap energy, modest coins; server validates time + score range
 const MINI = { memory: { name: '짝맞추기', energy: 8, minMs: 6000, maxMs: 600000 }, pop: { name: '하트 팡팡', energy: 8, minMs: 29000, maxMs: 120000, maxScore: 90 } };
 function miniCoins(game, score) { score = Math.floor(+score);
   if (game === 'memory') return score >= 8 && score <= 200 ? Math.max(10, Math.min(25, 25 - (score - 8))) : 0; // score = moves (8 = perfect)
   if (game === 'pop') return score >= 0 && score <= MINI.pop.maxScore ? (score < 5 ? 5 : Math.min(25, 10 + Math.floor((score - 5) / 3))) : 0; // score = hearts tapped
   return 0; }
-const api = { MINI, miniCoins, NCHAR, MIN, newPlayer, newPet, update, act, SHOP, CFG, POWER, publicPet, sanitizeSnap, snapOf, clamp, HAIRS, OUTFITS, ACCS, ITEM_FX, CONSUMABLES, GACHA, RARITY_KO, gacha, TRAITS, COIN_CAP, maxOf, coinCap, raidHpOf, raidAtkOf, addCoins, priceOf, migrate, ownKey };
+const api = { CUSTOM, validCustom, setLook, cleanName, MINI, miniCoins, NCHAR, MIN, newPlayer, newPet, update, act, SHOP, CFG, POWER, publicPet, sanitizeSnap, snapOf, clamp, HAIRS, OUTFITS, ACCS, ITEM_FX, CONSUMABLES, GACHA, RARITY_KO, gacha, TRAITS, COIN_CAP, maxOf, coinCap, raidHpOf, raidAtkOf, addCoins, priceOf, migrate, ownKey };
 if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.Game = api;
 })(typeof window !== 'undefined' ? window : globalThis);
