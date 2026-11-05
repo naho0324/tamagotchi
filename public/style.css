@@ -81,3 +81,4 @@ textarea { width: 100%; box-sizing: border-box; font: 11px monospace; border: 3p
 .cr-opt .sw{display:block;width:26px;height:26px;border-radius:50%;border:2px solid #1d2557}
 .char-box{text-align:center;padding:8px}
 #cr-trait .cr-opt{width:30%;min-width:0}#cr-trait .cr-opt b{font-size:18px}#cr-trait .ab{font-size:10px;color:#6a5a8a;line-height:1.2}
+.w-try{background:#fff0f6;border:2px dashed #ff6fa3;border-radius:10px;padding:6px;margin:4px 0;text-align:center;font-size:14px}.w-try .row{justify-content:center;gap:6px;margin-top:4px}.w-item.try{outline:3px dashed #ff6fa3;outline-offset:-3px}
