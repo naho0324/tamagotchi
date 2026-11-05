@@ -609,11 +609,14 @@ function openCreator(mode) {
   $('#cr-title').textContent = mode === 'edit' ? '캐릭터 바꾸기' : mode === 'restart' ? '새 알 만들기' : '나만의 펫 만들기';
   $('#cr-ok').textContent = mode === 'edit' ? '저장하기' : '이 펫으로 시작!'; $('#cr-cancel').classList.toggle('hidden', mode === 'new');
   $('#cr-name').value = CR.name; renderCreator(); $('#creator-modal').classList.remove('hidden'); }
+// 성격 = ability only (icon, short effect); shown in the picker
+const ABIL = { 1: ['🧼', '청결 150 · 병↓ · 약 반값'], 2: ['💗', '행복 150 · 코인 1.5배 · 응원'], 3: ['💤', '에너지 150'], 4: ['💰', '코인 2배 · 최대 2배'], 5: ['🏃', '에너지·레이드HP 130'], 6: ['🛡️', '레이드 HP 160'], 7: ['🍚', '배고픔 150 · 공격 1.3배'] };
 const traitLocked = () => CR.mode === 'edit' && S.pet.stage !== 'egg';
 function crBtn(parent, html, sel, on, data) { const b = document.createElement('button'); b.className = 'cr-opt' + (sel ? ' sel' : ''); b.innerHTML = html; b.onclick = on; if (data) b.dataset.opt = data; parent.appendChild(b); return b; }
 function renderCreator() {
   const body = $('#cr-body'); body.innerHTML = '';
-  const bodies = CR.mode === 'edit' && traitLocked() ? [S.pet.char, 'custom'] : [1, 2, 3, 4, 5, 6, 7, 'custom'];
+  // 성격 never decides looks: once the trait is locked, a custom pet can't jump to the preset that happens to share its trait
+  const bodies = traitLocked() ? (S.pet.custom ? ['custom'] : [S.pet.char, 'custom']) : [1, 2, 3, 4, 5, 6, 7, 'custom'];
   for (const k of bodies) crBtn(body, k === 'custom' ? '<img src="assets/pets/x1/child.png" alt=""><small>기본 몸</small>' : `<img src="assets/pets/${k}/child.png" alt=""><small>${G.TRAITS[k].name}</small>`, CR.body === k,
     () => { CR.body = k; if (k !== 'custom') CR.char = k; renderCreator(); }, 'body:' + k);
   $('#cr-custom').classList.toggle('hidden', CR.body !== 'custom');
@@ -623,8 +626,8 @@ function renderCreator() {
   for (const [k, hex] of Object.entries(G.CUSTOM.colors)) crBtn(co, `<i class="sw" style="background:${hex}"></i><small>${G.CUSTOM.colorsKo[k]}</small>`, CR.color === k, () => { CR.color = k; renderCreator(); }, 'color:' + k);
   if (CR.color !== 'mint') ey.querySelectorAll('img[data-rc]').forEach(im => recolorUrl(im.getAttribute('src'), CR.color, u => { im.src = u; }));
   const tr = $('#cr-trait'); tr.innerHTML = ''; const lock = traitLocked() || CR.body !== 'custom';
-  for (let k = 1; k <= G.NCHAR; k++) { const b = crBtn(tr, `<small>${G.TRAITS[k].name}</small>`, CR.char === k, () => { if (lock) return toast(traitLocked() ? '성격은 새 알에서만 바꿀 수 있어요' : '프리셋은 성격이 정해져 있어요'); CR.char = k; renderCreator(); }, 'trait:' + k); if (lock && CR.char !== k) b.disabled = true; }
-  $('#cr-tdesc').textContent = '✨ ' + G.TRAITS[CR.char].desc + (traitLocked() ? ' (성격은 새 알에서만 바꿀 수 있어요)' : CR.body !== 'custom' ? ' (프리셋 고유 성격)' : '');
+  for (let k = 1; k <= G.NCHAR; k++) { const b = crBtn(tr, `<b>${ABIL[k][0]}</b><small>${G.TRAITS[k].name}</small><small class="ab">${ABIL[k][1]}</small>`, CR.char === k, () => { if (lock) return toast(traitLocked() ? '성격은 새 알에서만 바꿀 수 있어요' : '프리셋은 성격이 정해져 있어요'); CR.char = k; renderCreator(); }, 'trait:' + k); if (lock && CR.char !== k) b.disabled = true; }
+  $('#cr-tdesc').textContent = '✨ ' + G.TRAITS[CR.char].desc + (traitLocked() ? ' (성격은 새 알에서만 바꿀 수 있어요)' : CR.body !== 'custom' ? ' (프리셋은 능력이 정해져 있어요 · 기본 몸이면 자유롭게 골라요)' : ' (능력만 바뀌고 모습은 그대로예요)');
 }
 function drawCreator(t) { const c = crctx; c.fillStyle = '#fff5f8'; c.fillRect(0, 0, crcv.width, crcv.height); c.fillStyle = '#fbe3ea'; c.fillRect(0, crcv.height - 24, crcv.width, 24);
   const lk = CR.body === 'custom' ? { char: CR.char, custom: { eyes: CR.eyes, color: CR.color } } : { char: CR.body };

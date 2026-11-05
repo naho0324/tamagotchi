@@ -9,7 +9,12 @@ async def main():
         pg = await ctx.new_page(); errs = []; pg.on('pageerror', lambda e: errs.append(str(e))); await pg.goto(URL); await pg.wait_for_timeout(1500)
         assert await pg.is_visible('#creator-modal'), 'creator shown on new game'
         await pg.screenshot(path='test/creator_new.png', full_page=True)
-        await pg.click('[data-opt="body:custom"]'); await pg.click('[data-opt="eyes:x2"]'); await pg.click('[data-opt="color:peach"]'); await pg.click('[data-opt="trait:5"]')
+        await pg.click('[data-opt="body:custom"]'); await pg.click('[data-opt="eyes:x2"]'); await pg.click('[data-opt="color:peach"]'); await pg.wait_for_timeout(400)
+        shots = []
+        for k in range(1, 8):  # 성격 = ability only: preview pixels identical for every trait
+            await pg.click(f'[data-opt="trait:{k}"]'); shots.append(await pg.evaluate('drawCreator(0), crcv.toDataURL()'))
+        assert len(set(shots)) == 1, 'trait changed the look'
+        await pg.click('[data-opt="trait:5"]'); await pg.wait_for_timeout(300); await pg.locator('#cr-trait').screenshot(path='test/creator_traits.png')
         await pg.fill('#cr-name', '몽실이'); await pg.wait_for_timeout(500); await pg.screenshot(path='test/creator_custom.png', full_page=True)
         await pg.click('#cr-ok'); await pg.wait_for_timeout(800)
         assert await pg.evaluate('[S.pet.char, S.pet.custom.eyes, S.pet.custom.color, S.pet.name]') == [5, 'x2', 'peach', '몽실이']
@@ -20,6 +25,7 @@ async def main():
         # edit later from 꾸미기: trait locked after hatch
         await pg.click('[data-act=wardrobe]'); await pg.click('#w-tabs [data-tab=char]'); await pg.click('#w-edit-char'); await pg.wait_for_timeout(300)
         assert await pg.is_disabled('[data-opt="trait:1"]')
+        assert await pg.evaluate("[...document.querySelectorAll('#cr-body [data-opt]')].map(b=>b.dataset.opt)") == ['body:custom'], 'grown custom pet must not be offered the preset matching its trait'
         await pg.click('[data-opt="eyes:x3"]'); await pg.click('[data-opt="color:sky"]'); await pg.fill('#cr-name', '구름'); await pg.wait_for_timeout(500)
         await pg.screenshot(path='test/creator_edit.png', full_page=True); await pg.click('#cr-ok'); await pg.wait_for_timeout(500)
         assert await pg.evaluate('[S.pet.char, S.pet.custom.eyes, S.pet.custom.color, S.pet.name]') == [5, 'x3', 'sky', '구름']
