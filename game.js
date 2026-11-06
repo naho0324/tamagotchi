@@ -116,12 +116,12 @@ function migrate(player) { // old saves: hat/clothes items are gone -> refund; a
     if ('name' in player.pet) { const n = cleanName(player.pet.name); if (n) player.pet.name = n; else delete player.pet.name; } }
   delete player.wearing; }
 const validChar = c => Number.isInteger(+c) && +c >= 1 && +c <= NCHAR;
-// v1.7 custom character (기본 몸): eyes = eye/expression only (x2/x3 are derived from x1 by repainting the eyes, so the face outline is identical), color = runtime palette swap of the mint skin
+// v1.7 custom character (기본 몸): eyes = eye/expression only (x2/x3 differ by the eyes, same face outline), color = runtime palette swap of the peach skin
 const CUSTOM = { eyes: ['x1', 'x2', 'x3'], eyesKo: { x1: '동글눈', x2: '웃는눈', x3: '점눈' },
   colors: { mint: '#9ee8c0', peach: '#ffc9a8', sky: '#a8d8ff', lilac: '#d3b8ff', lemon: '#fff09a', pink: '#ffb8d6', cocoa: '#c89a78', snow: '#f2f2f2' },
   colorsKo: { mint: '민트', peach: '복숭아', sky: '하늘', lilac: '라일락', lemon: '레몬', pink: '분홍', cocoa: '코코아', snow: '눈송이' } };
 function validCustom(c) { if (!c || typeof c !== 'object' || !CUSTOM.eyes.includes(c.eyes)) return null;
-  return { eyes: c.eyes, color: CUSTOM.colors[c.color] ? c.color : 'mint' }; }
+  return { eyes: c.eyes, color: CUSTOM.colors[c.color] ? c.color : 'peach' }; }
 const cleanName = n => typeof n === 'string' ? n.replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, 10) : '';
 function setLook(player, o) { o = o || {}; const p = player.pet; // edit later (꾸미기 > 캐릭터): name + body; 성격 only for a fresh egg
   if ('name' in o) p.name = cleanName(o.name);

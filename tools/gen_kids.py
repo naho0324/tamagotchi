@@ -1007,9 +1007,255 @@ def make_sheet(items, path):
     sheet.save(path)
     print('sheet', path, sheet.size)
 
+# --- round custom base body (peach). Only base_base + pet stages; other hairs/tops stay. ---
+PEACH = {
+    'hi': (255, 236, 224, 255),
+    'base': (255, 201, 168, 255),  # #ffc9a8, matches pet.js SKIN.peach / SKIN_BASE
+    'shade': (245, 170, 140, 255),
+    'deep': (232, 150, 124, 255),
+}
+HAIR_ROUND = {
+    'hi': hsl_rgb(28, 0.42, 0.55),
+    'base': (168, 106, 70, 255),
+    'shade': (128, 76, 50, 255),
+    'deep': (96, 56, 40, 255),
+}
+BLUSH_SOFT = (255, 170, 186, 255)
+EYE_DARK = (58, 42, 56, 255)  # warm dark, not a blue iris ring
+SHIRT = (255, 252, 250, 255)
+SHOE = (255, 255, 255, 255)
+SOLE = (90, 102, 140, 255)
+
+def peach_band(c):
+    h, s, l = rgb_hsl(*c[:3])
+    chroma = max(c[:3]) - min(c[:3])
+    return 8 <= h <= 40 and s >= 0.22 and l >= 0.64 and chroma >= 24
+
+for _c in PEACH.values():
+    assert peach_band(_c), (_c, rgb_hsl(*_c[:3]))
+for _c in list(HAIR_ROUND.values()) + [BLUSH_SOFT, EYE_DARK, SHIRT, SHOE, SOLE, NAVY]:
+    assert not peach_band(_c), (_c, rgb_hsl(*_c[:3]))
+
+def paint_tone(im, cx, cy, rx, ry, color, allowed):
+    a = np.array(im)
+    h, w = a.shape[:2]
+    y0, y1 = max(0, int(cy - ry)), min(h, int(cy + ry) + 1)
+    x0, x1 = max(0, int(cx - rx)), min(w, int(cx + rx) + 1)
+    if y0 >= y1 or x0 >= x1:
+        return
+    yy, xx = np.mgrid[y0:y1, x0:x1]
+    mask = ((xx - cx) / max(rx, 1)) ** 2 + ((yy - cy) / max(ry, 1)) ** 2 <= 1
+    sub = a[y0:y1, x0:x1]
+    ok = np.zeros(mask.shape, bool)
+    for c in allowed:
+        ok |= (sub[:, :, 0] == c[0]) & (sub[:, :, 1] == c[1]) & (sub[:, :, 2] == c[2]) & (sub[:, :, 3] > 0)
+    sub[mask & ok] = color
+    im.paste(Image.fromarray(a, 'RGBA'))
+
+def smile_arch(d, cx, cy, rx, ry, color, step=1):
+    """Happy closed eye: middle sits higher than the ends. Discs, not PIL arc (no filled wedge)."""
+    x = cx - rx
+    while x <= cx + rx:
+        t = (x - cx) / rx
+        y = cy + ry * (t * t)
+        d.ellipse([x - 1, y - 1, x + 1, y + 1], fill=color)
+        x += step
+
+def tiny_smile(d, cx, cy):
+    """Small ∪ smile: the middle sits lower than the corners."""
+    x = cx - 4
+    while x <= cx + 4:
+        t = (x - cx) / 4.0
+        y = cy + int(round(3 * (1 - t * t)))
+        d.point((x, y), fill=NAVY)
+        d.point((x, y + 1), fill=NAVY)
+        x += 1
+
+def draw_eyes_round(d, g, eye):
+    y, dx = g['eye_y'], g['eye_dx']
+    rx, ry = g['eye_rx'], g['eye_ry']
+    def sparkle(cx):
+        ell(d, cx, y, rx, ry, EYE_DARK, 1)
+        ell(d, cx - max(3, rx // 3), y - max(3, ry // 3), max(3, rx // 3), max(3, ry // 3), WHITE, 0)
+        ell(d, cx + rx // 4, y + ry // 5, 2, 2, (255, 236, 244, 255), 0)
+    def wink(cx):
+        smile_arch(d, cx, y - 1, rx, max(4, ry // 2), NAVY)
+    def dot(cx):
+        ell(d, cx, y + 1, max(3, rx // 3), max(3, rx // 3), EYE_DARK, 1)
+        d.ellipse([cx - 3, y - 1, cx - 1, y + 1], fill=WHITE)
+    fn = {'x1': sparkle, 'x2': wink, 'x3': dot}[eye]
+    fn(g['cx'] - dx)
+    fn(g['cx'] + dx)
+
+def round_layout(stage):
+    """~2 heads tall: big circle head, mochi body, stubby limbs. Feet land on row 252."""
+    if stage == 'adult':
+        return dict(cx=100, hcy=110, hr=50, hy=48,
+                    body=(100, 174, 34, 24), arm_dx=48, arm_y=174, arm_r=13,
+                    leg_dx=16, leg_y=226, leg_rx=11, leg_ry=16,
+                    shoe_y=240, shoe_rx=13, shoe_ry=10,
+                    eye_y=106, eye_dx=20, eye_rx=14, eye_ry=16, mouth_y=132, blush_y=122)
+    return dict(cx=100, hcy=168, hr=42, hy=40,
+                body=(100, 214, 28, 18), arm_dx=40, arm_y=214, arm_r=11,
+                leg_dx=13, leg_y=232, leg_rx=9, leg_ry=9,
+                shoe_y=244, shoe_rx=11, shoe_ry=6,
+                eye_y=164, eye_dx=16, eye_rx=12, eye_ry=13, mouth_y=186, blush_y=176)
+
+def draw_round_body(d, im, g, eye):
+    cx = g['cx']
+    hcy, hr, hy = g['hcy'], g['hr'], g['hy']
+    hair, hi, shade = HAIR_ROUND['base'], HAIR_ROUND['hi'], HAIR_ROUND['shade']
+    # fluffy hair behind the face: higher and wider, so the face cuts a soft crescent not a helmet
+    ell(d, cx, hcy - 12, hr + 8, hy + 4, hair)
+    # volume at the upper sides, tucked into the cap so it reads as fluff not earmuffs
+    ell(d, cx - hr + 10, hcy - hy + 22, 18, 14, shade)
+    ell(d, cx + hr - 8, hcy - hy + 24, 18, 14, hair)
+    ell(d, cx - 18, hcy - hy + 10, 12, 8, hi, 0)
+    # squishy body, stubby arms, short legs, round shoes
+    bcx, bcy, brx, bry = g['body']
+    ell(d, bcx, bcy, brx, bry, SHIRT)
+    ell(d, cx - g['arm_dx'], g['arm_y'], g['arm_r'], g['arm_r'] - 1, PEACH['base'])
+    ell(d, cx + g['arm_dx'], g['arm_y'], g['arm_r'], g['arm_r'] - 1, PEACH['base'])
+    for sgn in (-1, 1):
+        ell(d, cx + sgn * g['leg_dx'], g['leg_y'], g['leg_rx'], g['leg_ry'], PEACH['base'])
+        ell(d, cx + sgn * g['leg_dx'], g['shoe_y'], g['shoe_rx'], g['shoe_ry'], SHOE)
+        d.ellipse([cx + sgn * g['leg_dx'] - g['shoe_rx'] + 2, g['shoe_y'] + 2,
+                   cx + sgn * g['leg_dx'] + g['shoe_rx'] - 2, g['shoe_y'] + g['shoe_ry']], fill=SOLE)
+    # face window, a little low so hair reads as a round fringe
+    ell(d, cx, hcy + 4, hr - 2, hy - 4, PEACH['base'])
+    # a little warmth under the cheek, not a blotch across the forehead
+    paint_tone(im, cx + 18, g['blush_y'] + 6, 10, 7, PEACH['shade'], list(PEACH.values()))
+    ell(d, cx - 22, g['blush_y'], 9, 5, BLUSH_SOFT, 0)
+    ell(d, cx + 22, g['blush_y'], 9, 5, BLUSH_SOFT, 0)
+    draw_eyes_round(d, g, eye)
+    tiny_smile(d, cx, g['mouth_y'])
+
+def round_base(stage, eye):
+    im, d = new(W, H)
+    draw_round_body(d, im, round_layout(stage), eye)
+    im = silhouette(im)
+    bb = im.getbbox()
+    limit = 16 if stage == 'adult' else 106
+    assert bb and bb[1] >= limit and bb[3] <= 256 and bb[0] >= 1 and bb[2] <= 199, (stage, eye, bb)
+    # skin pixels in the recolor band; hair/blush/eyes/clothes are not
+    a = np.array(im)
+    skin_n = other_n = 0
+    for y in range(bb[1], bb[3]):
+        for x in range(bb[0], bb[2]):
+            p = tuple(int(v) for v in a[y, x])
+            if p[3] < 200:
+                continue
+            if peach_band(p):
+                skin_n += 1
+            elif p[:3] not in (NAVY[:3],):
+                other_n += 1
+    assert skin_n > 400, (stage, eye, skin_n)
+    return im
+
+def round_baby(eye):
+    im, d = new(150, 150)
+    hair = HAIR_ROUND['base']
+    ell(d, 75, 58, 50, 46, hair)
+    ell(d, 75, 96, 18, 14, SHIRT)
+    ell(d, 54, 96, 9, 8, PEACH['base'])
+    ell(d, 96, 96, 9, 8, PEACH['base'])
+    ell(d, 64, 116, 9, 6, SHOE)
+    ell(d, 86, 116, 9, 6, SHOE)
+    ell(d, 75, 66, 40, 36, PEACH['base'])
+    ell(d, 56, 76, 7, 4, BLUSH_SOFT, 0)
+    ell(d, 94, 74, 7, 4, BLUSH_SOFT, 0)
+    g = dict(cx=75, eye_y=64, eye_dx=15, eye_rx=11, eye_ry=12, mouth_y=84, blush_y=76)
+    draw_eyes_round(d, g, eye)
+    tiny_smile(d, 75, 84)
+    return crop_tight(silhouette(im), 2)
+
+def round_egg():
+    im, d = new(170, 200)
+    ell(d, 85, 102, 64, 78, (255, 246, 230, 255))
+    ell(d, 58, 78, 14, 12, (255, 196, 176, 255), 0)
+    ell(d, 112, 96, 12, 11, (255, 214, 170, 255), 0)
+    ell(d, 74, 132, 13, 11, (255, 186, 200, 255), 0)
+    line(d, (104, 36), (96, 52), (196, 150, 110, 255), 2)
+    line(d, (96, 52), (108, 64), (196, 150, 110, 255), 2)
+    return crop_tight(silhouette(im), 1)
+
+def recolor_peach(im, hex_color):
+    """Same band and lightness shift as pet.js recolorCanvas."""
+    T = rgb_hsl(*hx(hex_color)[:3])
+    B = rgb_hsl(255, 201, 168)
+    a = np.array(im)
+    for y in range(a.shape[0]):
+        for x in range(a.shape[1]):
+            p = a[y, x]
+            if p[3] < 8:
+                continue
+            h, s, l = rgb_hsl(int(p[0]), int(p[1]), int(p[2]))
+            if not (8 <= h <= 40 and s >= 0.22 and l >= 0.64 and max(int(p[0]), int(p[1]), int(p[2])) - min(int(p[0]), int(p[1]), int(p[2])) >= 24):
+                continue
+            ns = max(0, min(1, T[1] * s / B[1]))
+            nl = max(0, min(1, T[2] + (l - B[2])))
+            a[y, x] = hsl_rgb(T[0], ns, nl)
+    return Image.fromarray(a, 'RGBA')
+
+def build_base_only():
+    n = 0
+    for eye in ('x1', 'x2', 'x3'):
+        egg = round_egg()
+        baby = round_baby(eye)
+        child = round_base('child', eye)
+        adult = round_base('adult', eye)
+        pet = os.path.join(ROOT, 'pets', eye)
+        save(egg, f'{pet}/egg.png')
+        save(baby, f'{pet}/baby.png')
+        save(crop_tight(child, 2), f'{pet}/child.png')
+        save(crop_tight(adult, 2), f'{pet}/adult.png')
+        for stage, im in (('child', child), ('adult', adult)):
+            save(im, os.path.join(ROOT, 'outfits', eye, stage, 'base_base.png'))
+        n += 6
+    print('base body', n, 'files')
+
+def export_base_artifacts():
+    os.makedirs('/opt/cursor/artifacts', exist_ok=True)
+    child = round_base('child', 'x1')
+    bb = child.getbbox()
+    # a little padding so the outline isn't flush to the crop
+    crop = child.crop((max(0, bb[0] - 6), max(0, bb[1] - 6), min(W, bb[2] + 6), min(H, bb[3] + 6)))
+    big = crop.resize((crop.width * 4, crop.height * 4), Image.NEAREST)
+    bg = Image.new('RGBA', big.size, (255, 244, 238, 255))
+    bg.alpha_composite(big)
+    bg.convert('RGB').save('/opt/cursor/artifacts/base-closeup.png')
+    colors = [('복숭아', None), ('분홍', '#ffb8d6'), ('하늘', '#a8d8ff'), ('코코아', '#c89a78')]
+    thumbs = []
+    for name, hex_color in colors:
+        im = child if hex_color is None else recolor_peach(child, hex_color)
+        c = im.crop((max(0, bb[0] - 4), max(0, bb[1] - 4), min(W, bb[2] + 4), min(H, bb[3] + 4)))
+        c = c.resize((c.width * 3, c.height * 3), Image.NEAREST)
+        plate = Image.new('RGBA', c.size, (255, 244, 238, 255))
+        plate.alpha_composite(c)
+        thumbs.append((name, plate.convert('RGB')))
+    from PIL import ImageFont
+    font = ImageFont.truetype('/usr/share/fonts/truetype/wqy/wqy-microhei.ttc', 28)
+    gap = 16
+    w = sum(t.width for _, t in thumbs) + gap * (len(thumbs) + 1)
+    h = max(t.height for _, t in thumbs) + 52
+    sheet = Image.new('RGB', (w, h), (255, 244, 238))
+    dr = ImageDraw.Draw(sheet)
+    x = gap
+    for name, t in thumbs:
+        sheet.paste(t, (x, 8))
+        dr.text((x + 12, h - 40), name, fill=(29, 37, 87), font=font)
+        x += t.width + gap
+    sheet.save('/opt/cursor/artifacts/base-skins.png')
+    print('artifacts', big.size, sheet.size)
+
 if __name__ == '__main__':
-    preview = '--preview' in sys.argv
-    limit = None
-    if '--limit' in sys.argv:
-        limit = int(sys.argv[sys.argv.index('--limit') + 1])
-    build(preview=preview, limit=limit)
+    if '--base-only' in sys.argv:
+        build_base_only()
+        if '--artifacts' in sys.argv:
+            export_base_artifacts()
+    else:
+        preview = '--preview' in sys.argv
+        limit = None
+        if '--limit' in sys.argv:
+            limit = int(sys.argv[sys.argv.index('--limit') + 1])
+        build(preview=preview, limit=limit)

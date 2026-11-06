@@ -178,7 +178,7 @@ function act(action, arg) {
 function openBackup() { $('#bk-export').value = encodeSave(S); $('#bk-import').value = ''; $('#bk-confirm').classList.add('hidden'); $('#backup-modal').classList.remove('hidden'); }
 // 패치 노트. 캐릭터 id·아이템 id는 그대로라 예전 저장도 새 그림으로 열려요.
 const PATCHES = [
-  { ver: 'v1.13', date: '2026.11.06', title: '꼬마 캐릭터를 새로 그렸어요', lines: [
+  { ver: 'v1.8', date: '2026.11.06', title: '꼬마 캐릭터를 새로 그렸어요', lines: [
     '프리셋 1~7과 기본 몸을 더 또렷한 픽셀 꼬마 아이로 다시 그렸어요. 머리는 크고 몸은 작으며, 표정과 머리색은 캐릭터마다 달라요.',
     '헤어·상의·머리장식도 새 몸에 맞게 다시 그렸어요. 기본 머리, 기본 옷, 장식 없음은 그대로 무료이고, 나머지 꾸미기는 뽑기 전용이에요.',
     '이미 키우던 펫과 가지고 있던 옷은 번호가 같아서 그대로 불러와요.',
@@ -219,8 +219,8 @@ document.querySelectorAll('.buttons button').forEach(b => b.onclick = () => {
   else act(a);
 });
 roomCv.onclick = () => { if (S && S.pet.stage === 'dead') openCreator('restart'); };
-const myLook = () => S.pet.custom && S.pet.custom.eyes ? S.pet.custom.eyes : S.pet.char, myColor = () => S.pet.custom ? S.pet.custom.color || 'mint' : '';
-function rcIcons(el) { const c = myColor(); if (!c || c === 'mint') return; el.querySelectorAll('img[data-rc]').forEach(im => recolorUrl(im.getAttribute('src'), c, u => { im.src = u; })); }
+const myLook = () => S.pet.custom && S.pet.custom.eyes ? S.pet.custom.eyes : S.pet.char, myColor = () => S.pet.custom ? S.pet.custom.color || 'peach' : '';
+function rcIcons(el) { const c = myColor(); if (!c || c === 'peach') return; el.querySelectorAll('img[data-rc]').forEach(im => recolorUrl(im.getAttribute('src'), c, u => { im.src = u; })); }
 const isCustom = () => !!(S.pet.custom && S.pet.custom.eyes);
 const icon = (type, key) => { if (type === 'acc' && key !== 'none') return `<img class="ico acc" src="assets/acc/${key}.png" alt="">`; // v1.8 layered 머리장식 icon
   const it = G.SHOP[type + '_' + key], who = it && it.customOnly && !isCustom() ? 'x1' : myLook(); // 기본 몸 전용 items: show on the base body
@@ -851,7 +851,7 @@ const esc = t => String(t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;'
 let CR = null; const crcv = $('#crPreview'), crctx = crcv.getContext('2d');
 function openCreator(mode) {
   const p = S && S.pet, c = p && p.custom;
-  CR = { mode, body: c ? 'custom' : mode === 'new' ? 'custom' : p.char, eyes: c ? c.eyes : 'x1', color: c ? c.color : 'mint', char: p ? p.char : 1, name: p && p.name || '' };
+  CR = { mode, body: c ? 'custom' : mode === 'new' ? 'custom' : p.char, eyes: c ? c.eyes : 'x1', color: c ? c.color : 'peach', char: p ? p.char : 1, name: p && p.name || '' };
   $('#cr-title').textContent = mode === 'edit' ? '캐릭터 바꾸기' : mode === 'restart' ? '새 알 만들기' : '나만의 펫 만들기';
   $('#cr-ok').textContent = mode === 'edit' ? '저장하기' : '이 펫으로 시작!'; $('#cr-cancel').classList.toggle('hidden', mode === 'new');
   $('#cr-name').value = CR.name; renderCreator(); $('#creator-modal').classList.remove('hidden'); }
@@ -870,7 +870,7 @@ function renderCreator() {
   for (const e of G.CUSTOM.eyes) crBtn(ey, `<img data-rc="1" src="assets/pets/${e}/baby.png" alt=""><small>${G.CUSTOM.eyesKo[e]}</small>`, CR.eyes === e, () => { CR.eyes = e; renderCreator(); }, 'eyes:' + e);
   const co = $('#cr-colors'); co.innerHTML = '';
   for (const [k, hex] of Object.entries(G.CUSTOM.colors)) crBtn(co, `<i class="sw" style="background:${hex}"></i><small>${G.CUSTOM.colorsKo[k]}</small>`, CR.color === k, () => { CR.color = k; renderCreator(); }, 'color:' + k);
-  if (CR.color !== 'mint') ey.querySelectorAll('img[data-rc]').forEach(im => recolorUrl(im.getAttribute('src'), CR.color, u => { im.src = u; }));
+  if (CR.color !== 'peach') ey.querySelectorAll('img[data-rc]').forEach(im => recolorUrl(im.getAttribute('src'), CR.color, u => { im.src = u; }));
   const tr = $('#cr-trait'); tr.innerHTML = ''; const lock = traitLocked() || CR.body !== 'custom';
   for (let k = 1; k <= G.NCHAR; k++) { const b = crBtn(tr, `<b>${ABIL[k][0]}</b><small>${G.TRAITS[k].name}</small><small class="ab">${ABIL[k][1]}</small>`, CR.char === k, () => { if (lock) return toast(traitLocked() ? '성격은 새 알에서만 바꿀 수 있어요' : '프리셋은 성격이 정해져 있어요'); CR.char = k; renderCreator(); }, 'trait:' + k); if (lock && CR.char !== k) b.disabled = true; }
   $('#cr-tdesc').textContent = '✨ ' + G.TRAITS[CR.char].desc + (traitLocked() ? ' (성격은 새 알에서만 바꿀 수 있어요)' : CR.body !== 'custom' ? ' (프리셋은 능력이 정해져 있어요 · 기본 몸이면 자유롭게 골라요)' : ' (능력만 바뀌고 모습은 그대로예요)');

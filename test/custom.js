@@ -5,7 +5,7 @@ let p = G.newPlayer('a', '닉', now, 3, { eyes: 'x2', color: 'sky' }, ' 콩이<s
 assert.deepStrictEqual(p.pet.custom, { eyes: 'x2', color: 'sky' }); assert.strictEqual(p.pet.char, 3); assert.strictEqual(p.pet.name, '콩이script');
 assert.strictEqual(G.newPlayer('b', 'n', now, 4).coins, 60, 'rich preset still doubles');
 assert.strictEqual(G.newPlayer('b', 'n', now, 2, { eyes: 'zz' }).pet.custom, undefined, 'bad eyes -> preset');
-assert.strictEqual(G.validCustom({ eyes: 'x3', color: 'nope' }).color, 'mint');
+assert.strictEqual(G.validCustom({ eyes: 'x3', color: 'nope' }).color, 'peach');
 // snapshots & public look carry custom; sanitize rejects junk
 const sn = G.snapOf(p); assert.deepStrictEqual(sn.custom, { eyes: 'x2', color: 'sky' }); assert.strictEqual(sn.petName, '콩이script');
 assert.deepStrictEqual(G.sanitizeSnap(sn, 'n').custom, { eyes: 'x2', color: 'sky' });
