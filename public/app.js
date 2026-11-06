@@ -207,7 +207,7 @@ document.querySelectorAll('.buttons button').forEach(b => b.onclick = () => {
 });
 roomCv.onclick = () => { if (S && S.pet.stage === 'dead') openCreator('restart'); };
 const myLook = () => S.pet.custom && S.pet.custom.eyes ? S.pet.custom.eyes : S.pet.char, myColor = () => S.pet.custom ? S.pet.custom.color || 'mint' : '';
-function rcIcons(el) { const c = myColor(); if (!c || c === 'mint') return; el.querySelectorAll('img[data-rc]').forEach(im => recolorUrl(im.getAttribute('src'), c, u => { im.src = u; })); }
+function rcIcons(el) { const c = myColor(); if (!c) return; el.querySelectorAll('img[data-rc]').forEach(im => recolorUrl(im.getAttribute('src'), c, u => { im.src = u; })); }
 const isCustom = () => !!(S.pet.custom && S.pet.custom.eyes);
 const icon = (type, key) => { if (type === 'acc' && key !== 'none') return `<img class="ico acc" src="assets/acc/${key}.png" alt="">`; // v1.8 layered 머리장식 icon
   const it = G.SHOP[type + '_' + key], who = it && it.customOnly && !isCustom() ? 'x1' : myLook(); // 기본 몸 전용 items: show on the base body
@@ -838,7 +838,7 @@ const esc = t => String(t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;'
 let CR = null; const crcv = $('#crPreview'), crctx = crcv.getContext('2d');
 function openCreator(mode) {
   const p = S && S.pet, c = p && p.custom;
-  CR = { mode, body: c ? 'custom' : mode === 'new' ? 'custom' : p.char, eyes: c ? c.eyes : 'x1', color: c ? c.color : 'mint', char: p ? p.char : 1, name: p && p.name || '' };
+  CR = { mode, body: c ? 'custom' : mode === 'new' ? 'custom' : p.char, eyes: c ? c.eyes : 'x1', color: c ? c.color : 'peach', char: p ? p.char : 1, name: p && p.name || '' };
   $('#cr-title').textContent = mode === 'edit' ? '캐릭터 바꾸기' : mode === 'restart' ? '새 알 만들기' : '나만의 펫 만들기';
   $('#cr-ok').textContent = mode === 'edit' ? '저장하기' : '이 펫으로 시작!'; $('#cr-cancel').classList.toggle('hidden', mode === 'new');
   $('#cr-name').value = CR.name; renderCreator(); $('#creator-modal').classList.remove('hidden'); }
