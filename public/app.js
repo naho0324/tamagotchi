@@ -126,16 +126,26 @@ const icon = (type, key) => { if (type === 'acc' && key !== 'none') return `<img
 const itemIco = k => `<img class="ico it" src="assets/items/${k}.png" alt="">`;
 // 상점 = consumables only; 옷/헤어/머리장식/뽑기 live in 꾸미기 (wardrobe)
 function renderShop() {
-  const sl = $('#shop-list'); sl.innerHTML = '<h3>먹을 것 · 약</h3>';
-  for (const [k, it] of Object.entries(G.SHOP)) if (it.type === 'consumable') { const d = document.createElement('div'); d.className = 'item'; d.dataset.item = k;
-    const price = G.priceOf(S, k); d.innerHTML = `<span>${itemIco(k)}<span class="it-txt">${it.name} <small>🪙${price}${price < it.price ? ' (반값!)' : ''}</small><small class="fx">${G.ITEM_FX[k]}</small></span></span>`;
-    const b = document.createElement('button'); b.className = 'small'; b.textContent = '구매'; b.onclick = () => act('buy', k); d.appendChild(b); sl.appendChild(d); }
+  const sl = $('#shop-list'); sl.innerHTML = '';
+  const sell = (title, keys, hint) => {
+    const h = document.createElement('h3'); h.textContent = title; sl.appendChild(h);
+    if (hint) { const p = document.createElement('p'); p.className = 'hint'; p.textContent = hint; sl.appendChild(p); }
+    for (const k of keys) { const it = G.SHOP[k]; const d = document.createElement('div'); d.className = 'item'; d.dataset.item = k;
+      const price = G.priceOf(S, k); d.innerHTML = `<span>${itemIco(k)}<span class="it-txt">${it.name} <small>🪙${price}${price < it.price ? ' (반값!)' : ''}</small><small class="fx">${G.ITEM_FX[k]}</small></span></span>`;
+      const b = document.createElement('button'); b.className = 'small'; b.textContent = '구매'; b.onclick = () => act('buy', k); d.appendChild(b); sl.appendChild(d); }
+  };
+  sell('먹을 것 · 약', Object.keys(G.SHOP).filter(k => G.SHOP[k].type === 'consumable' && k !== 'ticket'));
+  sell('복권', ['ticket'], `🪙${G.LOTTERY.cost} (뽑기보다 저렴) · 대박 ${Math.min(S.lotteryPity || 0, G.LOTTERY.pity)}/${G.LOTTERY.pity} · 옷은 안 나와요`);
   const go = document.createElement('button'); go.id = 'shop-to-decor'; go.className = 'small b-green'; go.textContent = '👗 옷·머리장식·뽑기는 꾸미기에서!';
   go.onclick = () => { closeModal('shop-modal'); openWardrobe(); }; sl.appendChild(go);
   const il = $('#inv-list'); il.innerHTML = '';
-  const have = G.CONSUMABLES.filter(k => S.inventory[k] > 0);
-  for (const k of have) { const d = document.createElement('div'); d.className = 'item'; d.dataset.inv = k; d.innerHTML = `<span>${itemIco(k)}${G.SHOP[k].name} x${S.inventory[k]}</span>`;
-    const b = document.createElement('button'); b.className = 'small'; b.textContent = '사용'; b.onclick = () => act('use', k); d.appendChild(b); il.appendChild(d); }
+  const have = G.CONSUMABLES.filter(k => (S.inventory[k] || 0) > 0 || (k === 'ticket' && S.lotteryPending));
+  for (const k of have) { const d = document.createElement('div'); d.className = 'item'; d.dataset.inv = k;
+    const n = S.inventory[k] || 0, pending = k === 'ticket' && S.lotteryPending;
+    const name = pending ? `${G.SHOP[k].name} 긁는 중${n ? ` · 남은 ${n}장` : ''}` : `${G.SHOP[k].name} x${n}`;
+    d.innerHTML = `<span>${itemIco(k)}${name}</span>`;
+    const b = document.createElement('button'); b.className = 'small'; b.textContent = k === 'ticket' ? (pending ? '이어서' : '긁기') : '사용';
+    b.onclick = () => k === 'ticket' ? openScratch() : act('use', k); d.appendChild(b); il.appendChild(d); }
   if (!have.length) il.innerHTML = '<p class="hint">가방이 비었어요</p>';
 }
 function gachaBox() { const R = G.GACHA.rates, gd = document.createElement('div'); gd.className = 'gacha-box';
@@ -154,6 +164,98 @@ function pullGacha() {
     out.className = 'g-result pop r-' + r.rarity; rcIcons(out); $('#g-ok').disabled = false; }, 1600); }
 $('#g-ok').onclick = () => closeModal('gacha-modal');
 $('#g-again').onclick = () => { closeModal('gacha-modal'); pullGacha(); };
+// ---- SCRATCH (긁는 복권): drag/touch erases a silver foil; prize is claimed once enough is scratched ----
+let sc = null;
+function prizeInner(p) {
+  const icon = p.item ? `<img class="sc-item" src="assets/items/${esc(p.item)}.png" alt="">` : `<div class="sc-emoji">${p.jackpot ? '💰' : '🪙'}</div>`;
+  return `${icon}<div class="sc-name">${esc(p.name)}</div><div class="sc-sub">${p.jackpot ? '대박' : p.item ? '아이템' : '코인'}</div>`;
+}
+function paintFoil() {
+  const cv = $('#sc-foil'); cv.classList.remove('hidden');
+  const ctx = cv.getContext('2d'), w = cv.width, h = cv.height;
+  ctx.globalCompositeOperation = 'source-over'; ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = '#c5cad3'; ctx.fillRect(0, 0, w, h);
+  for (let y = 0; y < h; y += 4) for (let x = 0; x < w; x += 4) {
+    const n = (x * 13 + y * 7) % 19;
+    ctx.fillStyle = n < 6 ? '#9aa3b2' : n < 12 ? '#eef1f6' : '#b7bec8'; ctx.fillRect(x, y, 4, 4);
+  }
+  ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.lineWidth = 3;
+  for (let i = -h; i < w + h; i += 18) { ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i + h * 0.6, h); ctx.stroke(); }
+  ctx.fillStyle = '#3e4654'; ctx.font = 'bold 22px Galmuri11, monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('긁어보세요', w / 2, h / 2 - 6);
+  ctx.fillStyle = '#5c6574'; ctx.font = '13px Galmuri11, monospace'; ctx.fillText('은박', w / 2, h / 2 + 18);
+  sc.ctx = ctx; sc.cv = cv;
+}
+function showScratch(r) {
+  sc = { done: false, down: false, last: null, pct: 0, sampled: 0, rad: 28 };
+  $('#sc-hint').textContent = r.resumed ? '아직 안 본 복권이에요. 이어서 긁어보세요' : '손가락이나 마우스로 은박을 긁어보세요';
+  $('#sc-prize').innerHTML = prizeInner(r.prize); $('#sc-prize').setAttribute('aria-hidden', 'true');
+  $('#sc-card').className = 'sc-card'; $('#sc-result').className = 'sc-result hidden'; $('#sc-result').textContent = '';
+  const reveal = $('#sc-reveal'); reveal.disabled = true; reveal.textContent = '결과 보기'; reveal.classList.remove('hidden');
+  $('#sc-ok').disabled = true; $('#sc-close').classList.remove('hidden');
+  const bar = $('#sc-bar-i'); bar.style.width = '0%'; bar.className = '';
+  paintFoil(); $('#scratch-modal').classList.remove('hidden');
+}
+function openScratch() {
+  if (!S || !$('#scratch-modal').classList.contains('hidden')) return;
+  const r = G.act(S, 'scratch', null, Date.now());
+  if (typeof r === 'string') return toast(r);
+  save(); renderHud(); sendSnap(); showScratch(r); toast(r.msg);
+}
+function finishScratch() {
+  if (!S || !sc || sc.done) return;
+  sc.done = true; sc.down = false;
+  const r = G.act(S, 'scratchClaim', null, Date.now());
+  save(); renderHud(); sendSnap();
+  if (typeof r === 'string') { sc.done = false; return toast(r); }
+  $('#sc-foil').classList.add('hidden'); $('#sc-card').classList.add('revealed');
+  if (r.jackpot) $('#sc-card').classList.add('jackpot');
+  $('#sc-prize').setAttribute('aria-hidden', 'false');
+  $('#sc-result').textContent = r.msg; $('#sc-result').className = 'sc-result' + (r.jackpot ? ' jackpot' : '');
+  $('#sc-hint').textContent = r.item ? '가방에 넣었어요' : '코인을 받았어요';
+  $('#sc-reveal').disabled = true; $('#sc-reveal').classList.add('hidden'); $('#sc-close').classList.add('hidden'); $('#sc-ok').disabled = false;
+  const bar = $('#sc-bar-i'); bar.style.width = '100%'; if (r.jackpot) bar.className = 'jackpot';
+  toast(r.msg);
+}
+function sampleScratch() {
+  if (!sc || sc.done || !sc.ctx) return;
+  const now = performance.now(); if (now - sc.sampled < 40) return; sc.sampled = now;
+  const w = sc.cv.width, h = sc.cv.height, data = sc.ctx.getImageData(0, 0, w, h).data;
+  let clear = 0, total = 0;
+  for (let y = 0; y < h; y += 4) for (let x = 0; x < w; x += 4) { total++; if (data[(y * w + x) * 4 + 3] < 32) clear++; }
+  const pct = total ? clear / total : 0; sc.pct = pct;
+  const shown = Math.min(100, Math.round(pct * 100));
+  $('#sc-bar-i').style.width = shown + '%';
+  if (pct >= G.LOTTERY.hintAt) { $('#sc-reveal').disabled = false; $('#sc-hint').textContent = `거의 다 긁었어요 (${shown}%) · 결과 보기`; }
+  else $('#sc-hint').textContent = `은박을 긁어보세요 (${shown}%)`;
+  if (pct >= G.LOTTERY.revealAt) finishScratch();
+}
+function eraseAt(x, y) {
+  const ctx = sc.ctx; ctx.globalCompositeOperation = 'destination-out';
+  ctx.beginPath(); ctx.arc(x, y, sc.rad, 0, Math.PI * 2); ctx.fill();
+}
+const scFoil = $('#sc-foil');
+const scPos = e => { const r = scFoil.getBoundingClientRect(); return { x: (e.clientX - r.left) / r.width * scFoil.width, y: (e.clientY - r.top) / r.height * scFoil.height }; };
+scFoil.addEventListener('pointerdown', e => {
+  if (!sc || sc.done) return; e.preventDefault();
+  try { scFoil.setPointerCapture(e.pointerId); } catch {}
+  const rect = scFoil.getBoundingClientRect();
+  const css = matchMedia('(pointer: coarse)').matches ? 36 : 26;
+  sc.rad = Math.max(16, css * scFoil.width / (rect.width || scFoil.width));
+  sc.down = true; const p = scPos(e); sc.last = p; eraseAt(p.x, p.y); sc.sampled = 0; sampleScratch();
+}, { passive: false });
+scFoil.addEventListener('pointermove', e => {
+  if (!sc || sc.done || !sc.down) return; e.preventDefault();
+  const p = scPos(e), last = sc.last || p, dist = Math.hypot(p.x - last.x, p.y - last.y), step = Math.max(1, sc.rad * 0.35), n = Math.max(1, Math.ceil(dist / step));
+  for (let i = 1; i <= n; i++) eraseAt(last.x + (p.x - last.x) * i / n, last.y + (p.y - last.y) * i / n);
+  sc.last = p; sampleScratch();
+}, { passive: false });
+const scUp = () => { if (!sc) return; sc.down = false; sc.last = null; if (!sc.done) { sc.sampled = 0; sampleScratch(); } };
+scFoil.addEventListener('pointerup', scUp); scFoil.addEventListener('pointercancel', scUp);
+scFoil.addEventListener('contextmenu', e => e.preventDefault());
+$('#sc-reveal').onclick = () => finishScratch();
+$('#sc-ok').onclick = () => { sc = null; closeModal('scratch-modal'); };
+$('#sc-close').onclick = () => { sc = null; closeModal('scratch-modal'); toast('가방에서 이어서 긁을 수 있어요'); };
 // ---- WARDROBE (꾸미기): 헤어/옷 tabs, live preview ----
 let wTab = 'hair', wTry = null; // wTry = {slot, k}: try-on preview of an unowned item (nothing bought or saved)
 const wcv = $('#wPreview'), wctx = wcv.getContext('2d');

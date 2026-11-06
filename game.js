@@ -6,8 +6,10 @@ const CFG = {
   decay: { hunger: 0.25, happy: 0.2, energy: 0.15, clean: 0.15 }, // per minute
   sleepEnergy: 4, sleepDecay: 0.25, deathZeroMin: 720, sickThreshold: 15, sickChance: 0.25, rand: Math.random,
 };
+const LOTTERY_COST = 20; // 긁는 복권. 뽑기(60)보다 저렴
 const ITEM_FX = { snack: '배고픔 +40, 기분 +10', medicine: '병 치료', meal: '배고픔 가득, 기분 +5', drink: '체력 +60 (기분 -5)',
-  soap: '청결 가득, 기분 +15', toy: '기분 +50 (체력 안 써요)', vitamin: '병 치료 + 1시간 동안 안 아파요' };
+  soap: '청결 가득, 기분 +15', toy: '기분 +50 (체력 안 써요)', vitamin: '병 치료 + 1시간 동안 안 아파요',
+  ticket: '코인·간식, 가끔 대박' };
 const CONSUMABLES = Object.keys(ITEM_FX);
 const SHOP = {
   snack: { name: '간식', price: 10, type: 'consumable' },
@@ -16,6 +18,7 @@ const SHOP = {
   meal: { name: '도시락', price: 30, type: 'consumable' }, drink: { name: '에너지 드링크', price: 35, type: 'consumable' },
   soap: { name: '거품비누', price: 15, type: 'consumable' }, toy: { name: '장난감', price: 40, type: 'consumable' },
   vitamin: { name: '비타민', price: 45, type: 'consumable' },
+  ticket: { name: '긁는 복권', price: LOTTERY_COST, type: 'consumable' },
   hair_pony: { name: '포니테일', price: 80, type: 'hair', key: 'pony' }, hair_bob: { name: '단발', price: 80, type: 'hair', key: 'bob' },
   hair_pigtail: { name: '양갈래', price: 100, type: 'hair', key: 'pigtail' }, hair_afro: { name: '아프로', price: 150, type: 'hair', key: 'afro' },
   outfit_hoodie: { name: '후드티', price: 90, type: 'outfit', key: 'hoodie' }, outfit_stripe: { name: '줄무늬티+청바지', price: 100, type: 'outfit', key: 'stripe' },
@@ -53,6 +56,18 @@ const GACHA = { cost: 60, pity: 30, rates: { common: 70, rare: 25, legend: 5 }, 
     'outfit_tux', 'outfit_knight', 'outfit_idol', 'outfit_wizard', 'outfit_aodai'] };
 for (const r of ['rare', 'legend']) for (const k of GACHA[r]) Object.assign(SHOP[k], { gacha: r, price: 0 }); // no coin purchase for cosmetics
 const RARITY_KO = { common: '일반', rare: '희귀', legend: '전설' };
+// v1.11 긁는 복권: mostly small coins, sometimes a snack/consumable, rare coin jackpot. No hair/outfit/acc.
+// Pity counts only after the foil is claimed, so the shop counter can't spoil the card still under the foil.
+const LOTTERY = { cost: LOTTERY_COST, pity: 25, hintAt: 0.34, revealAt: 0.56, prizes: [
+  { id: 'c8', w: 24, coins: 8, tier: 'common' }, { id: 'c12', w: 20, coins: 12, tier: 'common' },
+  { id: 'c15', w: 14, coins: 15, tier: 'common' }, { id: 'c20', w: 10, coins: 20, tier: 'common' },
+  { id: 'c30', w: 6, coins: 30, tier: 'common' },
+  { id: 'snack', w: 8, item: 'snack', n: 1, tier: 'item' }, { id: 'soap', w: 5, item: 'soap', n: 1, tier: 'item' },
+  { id: 'snack2', w: 4, item: 'snack', n: 2, tier: 'item' }, { id: 'med', w: 3, item: 'medicine', n: 1, tier: 'item' },
+  { id: 'meal', w: 3, item: 'meal', n: 1, tier: 'item' }, { id: 'drink', w: 1, item: 'drink', n: 1, tier: 'item' },
+  { id: 'c60', w: 1, coins: 60, tier: 'jackpot' }, { id: 'c150', w: 1, coins: 150, tier: 'jackpot' } ] };
+LOTTERY.byId = Object.fromEntries(LOTTERY.prizes.map(p => [p.id, p]));
+LOTTERY.jackpots = LOTTERY.prizes.filter(p => p.tier === 'jackpot');
 const HAIRS = ['base', 'pony', 'bob', 'pigtail', 'afro', 'long', 'bun', 'spiky', 'curly', 'braid'];
 const OUTFITS = ['base', 'hoodie', 'stripe', 'dress', 'hanbok', 'space', 'raincoat', 'xmas', 'sailor', 'dino', 'tux', 'chef', 'knight', 'idol', 'wizard', 'aodai', 'jersey', 'cardigan', 'bee', 'bear']; // outfit = 상의 (top)
 const ACCS = ['none', 'crown', 'ribbon', 'flower', 'catears', 'bunny', 'beret', 'halo', 'sprout', 'partyhat', 'headphones'];
@@ -90,6 +105,10 @@ function migrate(player) { // old saves: hat/clothes items are gone -> refund; a
   if (!ACCS.includes(player.acc) || !ownKey(player, 'acc', player.acc)) player.acc = 'none'; // v1.4: head accessory (머리장식)
   if (!BOTTOMS.includes(player.bottom)) player.bottom = 'none'; // v1.8 placeholder
   if (!Number.isInteger(player.gachaPity) || player.gachaPity < 0) player.gachaPity = 0; // v1.5: 뽑기 pity counter
+  if (!Number.isInteger(player.lotteryPity) || player.lotteryPity < 0) player.lotteryPity = 0; // v1.11 긁는 복권 pity
+  else if (player.lotteryPity > LOTTERY.pity) player.lotteryPity = LOTTERY.pity;
+  if (!player.lotteryPending || !LOTTERY.byId[player.lotteryPending.id]) player.lotteryPending = null;
+  else player.lotteryPending = { id: player.lotteryPending.id }; // ignore tampered coin amounts; claim uses the table
   if (player.pet) { if ('custom' in player.pet) { const c = validCustom(player.pet.custom); if (c) player.pet.custom = c; else delete player.pet.custom; } // v1.7
     if ('name' in player.pet) { const n = cleanName(player.pet.name); if (n) player.pet.name = n; else delete player.pet.name; } }
   delete player.wearing; }
@@ -113,7 +132,7 @@ function newPet(now, char, custom, name) {
     careScore: 0, cooldowns: {} };
 }
 function newPlayer(id, nickname, now, char, custom, name) {
-  const pl = { id, nickname, coins: 30, inventory: { snack: 1, medicine: 0 }, owned: [], hair: 'base', outfit: 'base', bottom: 'none', acc: 'none', gachaPity: 0, pet: newPet(now, char, custom, name), wins: 0 };
+  const pl = { id, nickname, coins: 30, inventory: { snack: 1, medicine: 0 }, owned: [], hair: 'base', outfit: 'base', bottom: 'none', acc: 'none', gachaPity: 0, lotteryPity: 0, lotteryPending: null, pet: newPet(now, char, custom, name), wins: 0 };
   if (pl.pet.char === 4) { pl.coins *= 2; pl.pet.richBonus = 1; } return pl;
 }
 function stepMinute(p, t) {
@@ -161,6 +180,7 @@ function act(player, action, arg, now) {
     case 'wash': if (!alive) return '알에서 나오면 할 수 있어요'; s.clean = X('clean'); return { msg: '뽀득뽀득 깨끗해요', coins: reward('wash', 2) };
     case 'use': {
       if (!alive) return '사용할 수 없어요'; if (!player.inventory[arg]) return '아이템이 없어요';
+      if (arg === 'ticket') return '긁기 버튼으로 열어주세요'; // foil UI claims the prize; don't eat the ticket here
       if (arg === 'snack') { C('hunger', s.hunger + 40); C('happy', s.happy + 10); p.zeroMin = 0; }
       else if (arg === 'medicine') { if (!p.sick) return '아프지 않아요'; p.sick = false; p.zeroMin = 0; C('happy', s.happy + 5); }
       else if (arg === 'meal') { if (p.sleeping) return '자고 있어요 💤'; C('hunger', X('hunger')); p.zeroMin = 0; C('happy', s.happy + 5); }
@@ -185,6 +205,8 @@ function act(player, action, arg, now) {
       player[type] = key; return { msg: '갈아입었어요!' };
     }
     case 'gacha': return gacha(player);
+    case 'scratch': return scratchOpen(player, typeof arg === 'function' ? arg : Math.random);
+    case 'scratchClaim': return scratchClaim(player);
     case 'look': return setLook(player, arg);
     case 'restart': if (p.stage !== 'dead') return '아직 살아있어요'; { const o = arg && typeof arg === 'object' ? arg : {}; player.pet = newPet(now, 'char' in o ? o.char : p.char, 'custom' in o ? o.custom : p.custom, 'name' in o ? o.name : p.name); } return { msg: '새 알이 왔어요!' };
   }
@@ -205,6 +227,40 @@ function gacha(player, rnd = Math.random) {
     else { player.owned.push(k); player[it.type] = it.key; res.isNew = true; } }
   res.msg = `[${res.rarityKo}] ${res.name}` + (res.dup ? ` (중복! +${res.coins}코인)` : res.isNew ? ' 획득! 바로 썼어요' : ' 획득!');
   return res; }
+function lotteryView(d) {
+  const name = d.coins ? d.coins + '코인' : SHOP[d.item].name + (d.n > 1 ? ' x' + d.n : '');
+  return { id: d.id, name, coins: d.coins || 0, item: d.item || '', n: d.n || 0, jackpot: d.tier === 'jackpot', tier: d.tier };
+}
+function rollLottery(player, rnd) { // pity is applied on claim so an unrevealed card can't spoil the counter
+  const pity = Number.isInteger(player.lotteryPity) ? player.lotteryPity : 0;
+  const pool = pity + 1 >= LOTTERY.pity ? LOTTERY.jackpots : LOTTERY.prizes;
+  const total = pool.reduce((s, pr) => s + pr.w, 0);
+  let x = rnd() * total, picked = pool[pool.length - 1];
+  for (const pr of pool) { x -= pr.w; if (x < 0) { picked = pr; break; } }
+  return picked;
+}
+function scratchOpen(player, rnd = Math.random) {
+  if (player.lotteryPending && !LOTTERY.byId[player.lotteryPending.id]) player.lotteryPending = null;
+  if (player.lotteryPending) return { scratch: true, resumed: true, prize: lotteryView(LOTTERY.byId[player.lotteryPending.id]), msg: '이어서 긁어요' };
+  const pet = player.pet, alive = pet && pet.stage !== 'egg' && pet.stage !== 'dead';
+  if (!alive) return '사용할 수 없어요';
+  if (!player.inventory || !player.inventory.ticket) return '아이템이 없어요';
+  player.inventory.ticket--;
+  const d = rollLottery(player, rnd);
+  player.lotteryPending = { id: d.id }; // prize granted only in scratchClaim
+  return { scratch: true, resumed: false, prize: lotteryView(d), msg: '복권을 꺼냈어요' };
+}
+function scratchClaim(player) {
+  const d = player.lotteryPending && LOTTERY.byId[player.lotteryPending.id];
+  if (!d) { player.lotteryPending = null; return '확인할 복권이 없어요'; }
+  player.lotteryPending = null;
+  const pity = Number.isInteger(player.lotteryPity) ? player.lotteryPity : 0;
+  player.lotteryPity = d.tier === 'jackpot' ? 0 : pity + 1;
+  if (d.coins) addCoins(player, d.coins); else player.inventory[d.item] = (player.inventory[d.item] || 0) + (d.n || 1);
+  const v = lotteryView(d);
+  const msg = d.tier === 'jackpot' ? `대박!! ${v.name} 당첨!` : d.item ? `${v.name} 당첨! 가방에 넣었어요` : `${v.name} 당첨!`;
+  return { ...v, msg };
+}
 function publicPet(pl) { return { nickname: pl.nickname, custom: validCustom(pl.pet.custom), petName: cleanName(pl.pet.name), stage: pl.pet.stage, char: pl.pet.char, style: pl.pet.style, hair: pl.hair, outfit: pl.outfit, acc: pl.acc || 'none', sick: pl.pet.sick, sleeping: pl.pet.sleeping }; }
 const POWER = { egg: 0.5, baby: 1, child: 1.5, adult: 2.2 }; // raid damage multiplier by growth stage
 const STAGES = ['egg', 'baby', 'child', 'adult', 'dead'];
@@ -222,6 +278,6 @@ function miniCoins(game, score) { score = Math.floor(+score);
   if (game === 'memory') return score >= 8 && score <= 200 ? Math.max(10, Math.min(25, 25 - (score - 8))) : 0; // score = moves (8 = perfect)
   if (game === 'pop') return score >= 0 && score <= MINI.pop.maxScore ? (score < 5 ? 5 : Math.min(25, 10 + Math.floor((score - 5) / 3))) : 0; // score = hearts tapped
   return 0; }
-const api = { CUSTOM, validCustom, setLook, cleanName, MINI, miniCoins, NCHAR, MIN, newPlayer, newPet, update, act, SHOP, CFG, POWER, publicPet, sanitizeSnap, snapOf, clamp, HAIRS, OUTFITS, ACCS, BOTTOMS, ITEM_FX, CONSUMABLES, GACHA, RARITY_KO, gacha, TRAITS, COIN_CAP, maxOf, coinCap, raidHpOf, raidAtkOf, addCoins, priceOf, migrate, ownKey };
+const api = { CUSTOM, validCustom, setLook, cleanName, MINI, miniCoins, NCHAR, MIN, newPlayer, newPet, update, act, SHOP, CFG, POWER, publicPet, sanitizeSnap, snapOf, clamp, HAIRS, OUTFITS, ACCS, BOTTOMS, ITEM_FX, CONSUMABLES, GACHA, RARITY_KO, gacha, LOTTERY, scratchOpen, scratchClaim, TRAITS, COIN_CAP, maxOf, coinCap, raidHpOf, raidAtkOf, addCoins, priceOf, migrate, ownKey };
 if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.Game = api;
 })(typeof window !== 'undefined' ? window : globalThis);

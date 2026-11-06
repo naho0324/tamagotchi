@@ -71,6 +71,20 @@ textarea { width: 100%; box-sizing: border-box; font: 11px monospace; border: 3p
 @keyframes gpop{0%{transform:scale(.2);opacity:0}70%{transform:scale(1.15)}100%{transform:scale(1);opacity:1}}
 .w-item.locked{background:#f3f0f6}.w-item.locked img{opacity:.55}.w-item.locked em{color:#7a5a00}.w-list.gacha{display:block}#shop-to-decor{width:100%;margin:8px 0}
 .ico.it{width:32px;height:32px;image-rendering:pixelated;vertical-align:middle;margin-right:6px}.it-txt{display:inline-flex;flex-direction:column;vertical-align:middle}.it-txt .fx{color:#6b6f8a;font-size:11px}
+/* v1.11 긁는 복권 */
+#scratch-modal{z-index:12}.box.scratch{align-items:stretch}
+.sc-card{position:relative;width:min(100%,320px);aspect-ratio:16/9;margin:0 auto;border:4px solid #1d2557;border-radius:10px;overflow:hidden;background:#fffdf4;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+.sc-prize{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;background:repeating-linear-gradient(90deg,#fffdf6 0 10px,#fff3c4 10px 20px);pointer-events:none}
+.sc-emoji{font-size:42px;line-height:1}.sc-name{font-size:20px}.sc-sub{font-size:12px;color:#8a6a20}
+.sc-item{width:48px;height:48px;image-rendering:pixelated;object-fit:contain}
+.sc-card.revealed .sc-prize{animation:gpop .35s ease-out}
+.sc-card.jackpot{box-shadow:0 0 0 4px #ffd34d}.sc-card.jackpot .sc-name,.sc-result.jackpot{color:#d08a00}
+.sc-result{text-align:center;font-size:16px}.sc-result.jackpot{font-size:18px;font-weight:bold}
+.sc-bar{height:14px;border:3px solid #1d2557;border-radius:6px;background:#fff;overflow:hidden}
+.sc-bar i{display:block;height:100%;width:0;background:#b7bec8}.sc-bar i.jackpot{background:#ffd34d}
+#sc-foil{position:absolute;inset:0;width:100%;height:100%;border:0;border-radius:0;background:transparent;touch-action:none;cursor:pointer;display:block}
+#sc-reveal{width:100%}#sc-reveal:disabled,#sc-ok:disabled{opacity:.45;cursor:default}
+.box.scratch .row button{flex:1}
 
 /* v1.7 creator */
 .creator{max-height:92vh;overflow-y:auto}.creator h3{margin:8px 0 4px}#crPreview{display:block;margin:0 auto;image-rendering:pixelated;border-radius:8px}

@@ -120,6 +120,18 @@
   <button class="big b-blue" onclick="wTry = null; closeModal('wardrobe-modal')">닫기</button></div></div>
 <div id="gacha-modal" class="modal hidden"><div class="box gacha"><h2>뽑기!</h2><div id="g-capsule" class="g-capsule"></div><div id="g-result" class="g-result hidden"></div>
   <div class="row"><button id="g-again" class="small b-purple">한 번 더</button><button id="g-ok" class="small b-green">확인</button></div></div></div>
+<div id="scratch-modal" class="modal hidden"><div class="box scratch">
+  <h2>긁는 복권</h2>
+  <p id="sc-hint" class="hint">손가락이나 마우스로 은박을 긁어보세요</p>
+  <div id="sc-card" class="sc-card">
+    <div id="sc-prize" class="sc-prize" aria-hidden="true"></div>
+    <canvas id="sc-foil" width="320" height="180" aria-label="은박을 긁어 당첨을 확인해요"></canvas>
+  </div>
+  <div id="sc-bar" class="sc-bar"><i id="sc-bar-i"></i></div>
+  <div id="sc-result" class="sc-result hidden"></div>
+  <button id="sc-reveal" class="big b-purple" disabled>결과 보기</button>
+  <div class="row"><button id="sc-close" class="small">나중에</button><button id="sc-ok" class="small b-green" disabled>확인</button></div>
+</div></div>
 <div id="creator-modal" class="modal hidden"><div class="box creator"><h2 id="cr-title">나만의 펫 만들기</h2><canvas id="crPreview" width="240" height="220"></canvas>
   <input id="cr-name" maxlength="10" placeholder="펫 이름 (비워도 돼요)">
   <h3>몸</h3><div id="cr-body" class="cr-row"></div>
