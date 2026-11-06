@@ -230,14 +230,21 @@ function gacha(player, rnd = Math.random) {
     else { player.owned.push(k); player[it.type] = it.key; res.isNew = true; } }
   res.msg = `[${res.rarityKo}] ${res.name}` + (res.dup ? ` (중복! +${res.coins}코인)` : res.isNew ? ' 획득! 바로 썼어요' : ' 획득!');
   return res; }
-// v1.12 교환 코드. 새 코드는 이 표만 고치면 돼요 (영문 키는 대문자로).
-// coins: 코인, items: { 소모품키: 개수 }, owned: ['hair_pony'] 는 선택 (이미 있으면 안내만, 옷은 자동으로 입지 않아요)
-// perSave: 이 브라우저 저장에서 쓸 수 있는 횟수 (기본 1). expires: 이 시각(ms)부터 만료, 없으면 무기한
-// 전역 횟수 제한은 없어요. 펫은 각 브라우저 localStorage라 서버가 몇 번 쓰였는지 세지 않습니다.
-const CODES = {
-  WELCOME: { coins: 50, items: { snack: 2 } }, // 친구에게 알려주는 기본 선물. 저장당 1번
-  '복권선물': { items: { ticket: 1 } },
-};
+// v1.12 교환 코드. 목록은 public/codes.js (브라우저) / 같은 파일을 Node가 읽어요.
+// 1회용 코드: node tools/make-code.js --coins 100
+function loadCodes() {
+  if (typeof REDEEM_CODES === 'object' && REDEEM_CODES) return REDEEM_CODES;
+  if (typeof require === 'function') {
+    try {
+      const fs = require('fs'), path = require('path');
+      const src = fs.readFileSync(path.join(__dirname, 'public', 'codes.js'), 'utf8');
+      const m = src.match(/var REDEEM_CODES\s*=\s*(\{[\s\S]*\})\s*;/);
+      if (m) return JSON.parse(m[1]);
+    } catch (e) {}
+  }
+  return {};
+}
+const CODES = loadCodes();
 const normCode = s => String(s || '').trim().toUpperCase().replace(/\s+/g, '').slice(0, 24);
 function redeem(player, raw, now) {
   const code = normCode(raw);
