@@ -37,6 +37,7 @@ function recolorUrl(src, color, cb) { if (!SKIN[color] || color === 'mint') retu
   const im = new Image(); im.onload = () => { try { cb(_rcUrl[k] = recolorCanvas(im, color).toDataURL()); } catch { cb(src); } }; im.src = src; }
 function petSprite(char, stage) { const c = SPR[char] || SPR[1]; return c[stage] || c.baby; }
 // Whole-outfit sprites for child/adult: assets/outfits/<char>/<stage>/<hair>_<outfit>.png (200x260, feet at y=256)
+// v1.13: crisp 1px chibi-kid pixel art on this same grid (no anti-alias), so the crop, feet and head anchors stay put.
 const OHAIR = ['base', 'pony', 'bob', 'pigtail', 'afro'], OOUT = ['base', 'hoodie', 'stripe', 'dress', 'hanbok', 'space']; // preset (1-7) sprites
 // v1.8: custom body (x1-x3) has whole sprites for all 10 hairs x 20 tops; presets keep the old items only (new ones fall back to base)
 const XHAIR = OHAIR.concat(['long', 'bun', 'spiky', 'curly', 'braid']);

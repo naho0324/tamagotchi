@@ -176,6 +176,19 @@ function act(action, arg) {
 }
 // ---- BACKUP ----
 function openBackup() { $('#bk-export').value = encodeSave(S); $('#bk-import').value = ''; $('#bk-confirm').classList.add('hidden'); $('#backup-modal').classList.remove('hidden'); }
+// 패치 노트. 캐릭터 id·아이템 id는 그대로라 예전 저장도 새 그림으로 열려요.
+const PATCHES = [
+  { ver: 'v1.13', date: '2026.11.06', title: '꼬마 캐릭터를 새로 그렸어요', lines: [
+    '프리셋 1~7과 기본 몸을 더 또렷한 픽셀 꼬마 아이로 다시 그렸어요. 머리는 크고 몸은 작으며, 표정과 머리색은 캐릭터마다 달라요.',
+    '헤어·상의·머리장식도 새 몸에 맞게 다시 그렸어요. 기본 머리, 기본 옷, 장식 없음은 그대로 무료이고, 나머지 꾸미기는 뽑기 전용이에요.',
+    '이미 키우던 펫과 가지고 있던 옷은 번호가 같아서 그대로 불러와요.',
+  ] },
+];
+function openPatch() {
+  const list = $('#patch-list'); list.innerHTML = PATCHES.map(p => `<article class="patch-item"><b>${p.ver}</b> ${p.title}<small>${p.date}</small>${p.lines.map(t => `<p>${t}</p>`).join('')}</article>`).join('');
+  $('#patch-modal').classList.remove('hidden');
+}
+$('#patch-btn').onclick = openPatch;
 async function copyText(t) { try { await navigator.clipboard.writeText(t); toast('복사했어요!'); } catch { toast('길게 눌러 직접 복사해주세요'); } }
 $('#backup-btn').onclick = openBackup;
 $('#bk-copy').onclick = () => { $('#bk-export').select(); copyText($('#bk-export').value); };
