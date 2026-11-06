@@ -116,7 +116,7 @@ function migrate(player) { // old saves: hat/clothes items are gone -> refund; a
     if ('name' in player.pet) { const n = cleanName(player.pet.name); if (n) player.pet.name = n; else delete player.pet.name; } }
   delete player.wearing; }
 const validChar = c => Number.isInteger(+c) && +c >= 1 && +c <= NCHAR;
-// v1.7 custom character (기본 몸): eyes = eye/expression only (x2/x3 are derived from x1 by repainting the eyes, so the face outline is identical), color = runtime palette swap of the mint skin
+// v1.7 custom character (기본 몸): eyes = eye/expression only (x2/x3 repaint the eyes of x1, so the face outline matches), color = runtime palette swap. Base sprites are peach; older outfits stay mint. Ids are unchanged.
 const CUSTOM = { eyes: ['x1', 'x2', 'x3'], eyesKo: { x1: '동글눈', x2: '웃는눈', x3: '점눈' },
   colors: { mint: '#9ee8c0', peach: '#ffc9a8', sky: '#a8d8ff', lilac: '#d3b8ff', lemon: '#fff09a', pink: '#ffb8d6', cocoa: '#c89a78', snow: '#f2f2f2' },
   colorsKo: { mint: '민트', peach: '복숭아', sky: '하늘', lilac: '라일락', lemon: '레몬', pink: '분홍', cocoa: '코코아', snow: '눈송이' } };
