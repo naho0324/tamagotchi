@@ -13,10 +13,10 @@ ROOT = os.path.join(os.path.dirname(__file__), '..', 'public', 'assets')
 # Palette. Peach skin sits in a tight band (h 12-36, s>=0.50, l 0.68-0.96)
 # so hair, blush, pink clothes, white collar and outlines are never recolored.
 OUT = (58, 34, 28, 255)       # #3a221c
-HAIR_D = (90, 52, 38, 255)    # #5a3426
+HAIR_D = (74, 42, 32, 255)     # #4a2a20 strand / shadow
 HAIR = (122, 74, 52, 255)     # #7a4a34
-HAIR_L = (166, 114, 80, 255)  # #a67250
-HAIR_S = (196, 152, 112, 255) # #c49870
+HAIR_L = (176, 122, 84, 255)  # #b07a54
+HAIR_S = (206, 164, 120, 255) # #cea478 crown shine
 SKIN_L = (255, 227, 208, 255) # #ffe3d0
 SKIN = (255, 201, 168, 255)   # #ffc9a8
 SKIN_S = (248, 176, 144, 255) # #f8b090
@@ -25,14 +25,18 @@ BLUSH = (255, 176, 188, 255)  # #ffb0bc
 MOUTH = (224, 96, 112, 255)   # #e06070
 MOUTH_D = (176, 64, 80, 255)  # #b04050
 TONGUE = (255, 150, 160, 255) # #ff96a0
-DRESS_L = (252, 214, 222, 255)
-DRESS = (247, 180, 196, 255)  # #f7b4c4
-DRESS_S = (232, 152, 172, 255)
-DRESS_D = (208, 120, 148, 255)
-COLLAR = (247, 241, 238, 255) # #f7f1ee low sat
-SHOE = (232, 140, 164, 255)
-SHOE_D = (196, 104, 128, 255)
-SHOE_L = (255, 214, 222, 255)
+# Neutral clothes: butter shirt, lilac shorts, cream collar, chunky sneakers.
+# Hues stay outside the peach and mint skin bands.
+SHIRT_L = (252, 232, 176, 255)
+SHIRT = (243, 212, 138, 255)
+SHIRT_S = (224, 184, 96, 255)
+SHORTS_L = (196, 176, 214, 255)
+SHORTS = (168, 146, 190, 255)
+SHORTS_D = (140, 118, 164, 255)
+COLLAR = (244, 239, 232, 255)
+SHOE = (255, 255, 255, 255)
+SHOE_D = (92, 70, 56, 255)
+SHOE_L = (232, 160, 176, 255)
 WHITE = (255, 255, 255, 255)
 EYE = (54, 32, 26, 255)       # #36201a
 EYE_L = (122, 72, 52, 255)    # #7a4834 iris glow, too dark/dull to be skin
@@ -166,28 +170,29 @@ def blit(s, cx, cy, rows, color_of, region, over=None):
 
 # Equal-width rows so the pattern stays centered. o outline, K iris, W highlight, L lower glow.
 EYE_BIG = [
-    '....oooooo....',
-    '...oKKKKKKKo...',
-    '..oKKKWWWKKoo..',
-    '.oKKWWWWWWKKKo.',
-    '.oKKWWWWWWKKKo.',
-    '.oKKKKWWKKKKKo.',
-    '.oKKKKKKKKKKKo.',
-    '.oKKKKKKKwKKKo.',
-    '.oKKKKKKKKKKKo.',
-    '.oKKKKLLLKKKKo.',
-    '..oKKKLLLKKKo..',
-    '...oKKKKKKKo...',
-    '....oooooooo...',
+    '....ooooooo....',
+    '...oKKKKKKKKo...',
+    '..oKKWWWWKKKKo..',
+    '.oKKWWWWWWKKKKo.',
+    '.oKKWWWWWWKKKKo.',
+    '.oKKKWWWWKKKKKo.',
+    '.oKKKKKKKKKKKKo.',
+    '.oKKKKKKKwwKKKo.',
+    '.oKKKKKKKKKKKKo.',
+    '.oKKKKLLLKKKKKo.',
+    '..oKKKLLLKKKKo..',
+    '...oKKKKKKKKo...',
+    '....ooooooooo...',
 ]
 EYE_SM = [
-    '..oooo...',
-    '.oKWWKo..',
-    'oKKKKKKKo',
-    'oKKKKwKKo',
-    'oKKLLKKKo',
-    '.oKKKKKo.',
-    '..oooo...',
+    '..oooooo..',
+    '.oKWWWKKo.',
+    'oKKWWWWKKo',
+    'oKKKKKKKKo',
+    'oKKKKwwKKo',
+    'oKKLLLKKKo',
+    '.oKKKKKKo.',
+    '..oooooo..',
 ]
 # 웃는눈: thick happy arch, peak in the middle
 SMILE_BIG = [
@@ -218,12 +223,12 @@ DOT_SM = [
     '.ooo.',
 ]
 MOUTH_BIG = [
-    '..oooo..',
-    '.oMMMMo.',
-    'oMMMMMMo',
-    'oMMTTTMo',
-    '.oMMMMo.',
-    '..oooo..',
+    '...oooo...',
+    '..oMMMMo..',
+    '.oMMMMMMo.',
+    '.oMMTTTMo.',
+    '..oMMMMo..',
+    '...oooo...',
 ]
 MOUTH_SM = [
     '.ooo.',
@@ -261,106 +266,136 @@ def draw_eyes(s, lx, ly, rx, ry, big, kind):
     blit(s, rx, ry, pat, eye_colors, 'eye', over={'skin', 'blush', 'line', 'eye', None})
 
 
+def ellipse_pts(cx, cy, rx, ry):
+    rx, ry = max(1, rx), max(1, ry)
+    pts = []
+    for y in range(int(cy - ry - 1), int(cy + ry + 2)):
+        for x in range(int(cx - rx - 1), int(cx + rx + 2)):
+            dx, dy = x - cx, y - cy
+            if (dx * dx) / (rx * rx) + (dy * dy) / (ry * ry) <= 1:
+                pts.append((x, y))
+    return pts
+
+
+def stroke(s, pts, color):
+    for a, b in zip(pts, pts[1:]):
+        x0, y0 = a
+        x1, y1 = b
+        n = max(abs(x1 - x0), abs(y1 - y0), 1)
+        for i in range(n + 1):
+            x = int(round(x0 + (x1 - x0) * i / n))
+            y = int(round(y0 + (y1 - y0) * i / n))
+            if s.inside(x, y) and s.r[y][x] == 'hair' and s.c[y][x] != OUT:
+                s.plot(x, y, color, 'hair')
+
+
+def shade_hair_columns(s, cx):
+    """Light on the upper left of each lock, dark along the underside. Follows the silhouette."""
+    cols = {}
+    for y in range(s.h):
+        for x in range(s.w):
+            if s.r[y][x] == 'hair' and s.c[y][x] != OUT:
+                cols.setdefault(x, []).append(y)
+    for x, ys in cols.items():
+        y0, y1 = min(ys), max(ys)
+        span = max(1, y1 - y0)
+        for y in ys:
+            t = (y - y0) / span
+        # light across the top of every lock, extra shine on the left; dark only on the underside
+        if t < 0.20:
+            s.c[y][x] = HAIR_S if t < 0.08 and x < cx else HAIR_L
+        elif t > 0.76:
+            s.c[y][x] = HAIR_D
+
+
 def build(H, kind):
-    """One chibi kid. H is the logical height (adult 112, child 70)."""
-    k = H / 112
+    """Shared neutral base. Design space is 116 tall; adult uses that, child is the same proportions smaller."""
+    k = H / 116
     big = H >= 100
-    W = z(100, k) + 8
-    s = Spr(W, H + 8)
-    ox, oy = 4, 3
+    s = Spr(z(108, k) + 8, H + 8)
+    ox, oy = 4, 2
 
     def P(x, y):
         return ox + z(x, k), oy + z(y, k)
 
-    # legs and shoes first, dress covers the tops
-    for sx in (-11, 11):
-        x, y = P(48 + sx, 104)
-        s.ellipse(x, y, max(3, z(5, k)), max(5, z(8, k)), SKIN, 'skin')
-        x, y = P(48 + sx, 110)
-        s.ellipse(x, y, max(4, z(7, k)), max(3, z(4, k)), SHOE, 'shoe')
-        s.ellipse(x, y + z(2, k), max(3, z(6, k)), max(1, z(2, k)), SHOE_D, 'shoe', outline=False, over={'shoe', 'line'})
-        s.plot(x - z(2, k), y - 1, SHOE_L, 'shoe')
+    def ep(x, y, rx, ry):
+        return ellipse_pts(*P(x, y), max(1, z(rx, k)), max(1, z(ry, k)))
 
-    # round dress: short bodice, wider hem. Not a flat disc.
-    dx, dtop = P(48, 82)
-    s.bell(dx, dtop, z(30, k), z(16, k), z(22, k), DRESS, 'dress')
+    # chunky sneakers, then a short bit of leg, then shorts and a simple collared shirt
+    for sx in (-12, 12):
+        x, y = P(50 + sx, 108)
+        s.ellipse(x, y, max(4, z(8, k)), max(3, z(5, k)), SHOE, 'shoe')
+        s.ellipse(x, y + z(2, k), max(3, z(7, k)), max(1, z(2, k)), SHOE_D, 'shoe', outline=False, over={'shoe', 'line'})
+        s.ellipse(x - z(2, k), y - z(1, k), max(2, z(3, k)), max(1, z(2, k)), SHOE_L, 'shoe', outline=False, over={'shoe'})
+        s.plot(x - z(3, k), y - z(1, k), WHITE, 'shoe')
+    for sx in (-12, 12):
+        x, y = P(50 + sx, 102)
+        s.ellipse(x, y, max(2, z(4, k)), max(3, z(5, k)), SKIN, 'skin')
 
-    def dress_shade(x, y, col):
-        if y < dtop + z(7, k) and x < dx:
-            return DRESS_L
-        if y > dtop + z(20, k):
-            return DRESS_D
-        if y > dtop + z(14, k) or x > dx + z(12, k):
-            return DRESS_S
-        return DRESS
+    dtop_x, dtop = P(50, 92)
+    s.bell(dtop_x, dtop, max(8, z(16, k)), max(8, z(15, k)), max(9, z(17, k)), SHORTS, 'shorts')
+    s.shade('shorts', lambda x, y, col: SHORTS_D if y > dtop + z(10, k) else (SHORTS_L if x < dtop_x - z(4, k) and y < dtop + z(6, k) else None))
 
-    s.shade('dress', dress_shade)
+    stop_x, stop = P(50, 70)
+    s.bell(stop_x, stop, max(12, z(26, k)), max(10, z(16, k)), max(12, z(19, k)), SHIRT, 'shirt')
+    s.shade('shirt', lambda x, y, col: SHIRT_L if y < stop + z(8, k) and x < stop_x else (SHIRT_S if y > stop + z(18, k) else None))
 
-    # tiny sleeves and round hands
-    for sx, side in ((-22, -1), (22, 1)):
-        x, y = P(48 + sx, 88)
-        s.ellipse(x, y, max(3, z(6, k)), max(3, z(4, k)), DRESS, 'dress', over={None, 'dress', 'line', 'shoe'})
-        hx, hy = P(48 + sx + side * 3, 92)
-        s.ellipse(hx, hy, max(2, z(4, k)), max(2, z(3, k)), SKIN, 'skin')
+    for sx, side in ((-18, -1), (18, 1)):
+        x, y = P(50 + sx, 78)
+        s.ellipse(x, y, max(3, z(6, k)), max(3, z(4, k)), SHIRT, 'shirt', over={None, 'shirt', 'shorts', 'line', 'shoe'})
+        hx, hy = P(50 + sx + side * 4, 82)
+        s.ellipse(hx, hy, max(3, z(4, k)), max(3, z(4, k)), SKIN, 'skin')
 
-    # one smooth bob. Side volume comes from the ellipse, not extra lumps.
-    hx, hy = P(48, 42)
-    s.ellipse(hx, hy, z(46, k), z(40, k), HAIR, 'hair', fluff=0.02)
+    cx, cy = P(50, 72)
+    s.ellipse(cx, cy, z(13, k), z(6, k), COLLAR, 'collar', over={'shirt', 'line', None}, y0=cy - 1)
+    for byi in (82, 90):
+        blit(s, *P(50, byi), BTN, btn_colors, 'button', over={'shirt', 'line', 'button'})
 
-    # big round face in the lower half of the hair
-    fx, fy = P(48, 54)
-    frx, fry = z(30, k), z(26, k)
+    # fluffy basic hair: one mass with side volume, not a smooth circle and not pigtails
+    hair = []
+    hair += ep(50, 34, 34, 28)
+    hair += ep(24, 40, 13, 15)
+    hair += ep(76, 40, 13, 15)
+    hair += ep(30, 48, 10, 12)
+    hair += ep(70, 48, 10, 12)
+    hair += ep(36, 16, 12, 9)
+    hair += ep(50, 12, 14, 8)
+    hair += ep(64, 16, 12, 9)
+    s.stamp(hair, HAIR, 'hair', outline=True)
+    shade_hair_columns(s, P(50, 0)[0])
+    # a few dark strands so the hair reads as locks
+    for strand in (
+        [(28, 20), (24, 32), (22, 44)],
+        [(42, 16), (38, 28), (36, 38)],
+        [(58, 16), (62, 28), (64, 38)],
+        [(74, 20), (78, 32), (80, 44)],
+    ):
+        stroke(s, [P(x, y) for x, y in strand], HAIR_D)
+
+    fx, fy = P(50, 46)
+    frx, fry = z(24, k), z(22, k)
     s.ellipse(fx, fy, frx, fry, SKIN, 'skin')
+    s.shade('skin', lambda x, y, col: SKIN_L if (y - fy) < -fry * 0.4 and (x - fx) < 0 else (SKIN_S if (y - fy) > fry * 0.62 else None))
 
-    # bangs: one curve. No outline against the hair above it (that read as a crack).
-    s.ellipse(*P(48, 34), z(30, k), z(8, k), HAIR, 'hair', outline=False, over={'skin', 'line', 'hair', None})
+    # eyebrow-level bangs: separate short tufts, not a solid bar
+    for bx, by, brx, bry in ((32, 33, 5, 6), (41, 34, 5, 7), (50, 33, 6, 6), (59, 34, 5, 7), (68, 33, 5, 6)):
+        s.ellipse(*P(bx, by), max(2, z(brx, k)), max(3, z(bry, k)), HAIR, 'hair', outline=False, over={'skin', 'line', 'hair', None})
     for y in range(s.h - 1):
         for x in range(s.w):
             if s.r[y][x] == 'hair' and s.r[y + 1][x] == 'skin':
                 s.plot(x, y, OUT, 'line')
+            # side of the face: hair touching skin sideways also gets a line
+            if s.r[y][x] == 'hair' and s.inside(x + 1, y) and s.r[y][x + 1] == 'skin':
+                s.plot(x, y, OUT, 'line')
+            if s.r[y][x] == 'hair' and s.inside(x - 1, y) and s.r[y][x - 1] == 'skin':
+                s.plot(x, y, OUT, 'line')
 
-    def hair_shade(x, y, col):
-        dx, dy = x - hx, y - (hy)
-        rx, ry = max(1, z(46, k)), max(1, z(40, k))
-        nx, ny = dx / rx, dy / ry
-        rim = nx * nx + ny * ny
-        # shine follows the upper-left curve of the bob, not a rectangle
-        if ny < -0.25 and nx < 0.2 and rim > 0.28:
-            return HAIR_S if rim > 0.62 and nx < 0 else HAIR_L
-        if ny > 0.42 or abs(nx) > 0.78:
-            return HAIR_D
-        return None
+    blush = ['..ppppp..', '.ppppppp.', '..ppppp..'] if big else ['.pppp.', 'pppppp', '.pppp.']
+    for sx in (-18, 18):
+        blit(s, *P(50 + sx, 56), blush, lambda ch: BLUSH if ch == 'p' else None, 'blush', over={'skin'})
 
-    s.shade('hair', hair_shade)
-
-    def skin_shade(x, y, col):
-        dy = y - fy
-        dx = x - fx
-        if dy < -fry * 0.45 and dx < frx * 0.15:
-            return SKIN_L
-        if dy > fry * 0.62:
-            return SKIN_S
-        return None
-
-    s.shade('skin', skin_shade)
-
-    blush = ['..pppp..', '.pppppp.', '..pppp..'] if big else ['.ppp.', 'ppppp', '.ppp.']
-    for sx in (-20, 20):
-        blit(s, *P(48 + sx, 64), blush, lambda ch: BLUSH if ch == 'p' else None, 'blush', over={'skin'})
-
-    # collar: only the lower crescent, and never on top of the face
-    cx, cy = P(48, 80)
-    s.ellipse(cx, cy, z(16, k), z(7, k), COLLAR, 'collar', over={'dress', 'line', None}, y0=cy - 1)
-    s.ellipse(cx, cy + z(3, k), z(6, k), z(4, k), COLLAR, 'collar', over={'dress', 'line', None}, y0=cy)
-
-    for byi in (90, 98):
-        blit(s, *P(48, byi), BTN, btn_colors, 'button', over={'dress', 'line', 'button', None})
-
-    blit(s, *P(48, 68), MOUTH_BIG if big else MOUTH_SM, mouth_colors, 'mouth', over={'skin', 'line', 'blush', 'mouth'})
-
-    lx, ly = P(48 - 16, 52)
-    rx, ry = P(48 + 16, 52)
-    draw_eyes(s, lx, ly, rx, ry, big, kind)
+    blit(s, *P(50, 62), MOUTH_BIG if big else MOUTH_SM, mouth_colors, 'mouth', over={'skin', 'line', 'blush', 'mouth'})
+    draw_eyes(s, *P(50 - 13, 46), *P(50 + 13, 46), big, kind)
     return s
 
 
@@ -407,7 +442,7 @@ def tight(fig):
 def main():
     os.chdir(os.path.join(os.path.dirname(__file__), '..'))
     for kind in ('x1', 'x2', 'x3'):
-        for stage, H in (('child', 70), ('adult', 112)):
+        for stage, H in (('child', 74), ('adult', 116)):
             spr = build(H, kind)
             logical = spr.image()
             assert_bands(logical, f'{kind}/{stage}')
