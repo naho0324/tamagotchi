@@ -109,6 +109,8 @@ function migrate(player) { // old saves: hat/clothes items are gone -> refund; a
   else if (player.lotteryPity > LOTTERY.pity) player.lotteryPity = LOTTERY.pity;
   if (!player.lotteryPending || !LOTTERY.byId[player.lotteryPending.id]) player.lotteryPending = null;
   else player.lotteryPending = { id: player.lotteryPending.id }; // ignore tampered coin amounts; claim uses the table
+  if (!Array.isArray(player.redeemed)) player.redeemed = []; // v1.12 교환 코드: codes this save already used
+  player.redeemed = player.redeemed.filter(k => typeof k === 'string' && k.length > 0 && k.length <= 24).slice(-80);
   if (player.pet) { if ('custom' in player.pet) { const c = validCustom(player.pet.custom); if (c) player.pet.custom = c; else delete player.pet.custom; } // v1.7
     if ('name' in player.pet) { const n = cleanName(player.pet.name); if (n) player.pet.name = n; else delete player.pet.name; } }
   delete player.wearing; }
@@ -132,7 +134,7 @@ function newPet(now, char, custom, name) {
     careScore: 0, cooldowns: {} };
 }
 function newPlayer(id, nickname, now, char, custom, name) {
-  const pl = { id, nickname, coins: 30, inventory: { snack: 1, medicine: 0 }, owned: [], hair: 'base', outfit: 'base', bottom: 'none', acc: 'none', gachaPity: 0, lotteryPity: 0, lotteryPending: null, pet: newPet(now, char, custom, name), wins: 0 };
+  const pl = { id, nickname, coins: 30, inventory: { snack: 1, medicine: 0 }, owned: [], hair: 'base', outfit: 'base', bottom: 'none', acc: 'none', gachaPity: 0, lotteryPity: 0, lotteryPending: null, redeemed: [], pet: newPet(now, char, custom, name), wins: 0 };
   if (pl.pet.char === 4) { pl.coins *= 2; pl.pet.richBonus = 1; } return pl;
 }
 function stepMinute(p, t) {
@@ -207,6 +209,7 @@ function act(player, action, arg, now) {
     case 'gacha': return gacha(player);
     case 'scratch': return scratchOpen(player, typeof arg === 'function' ? arg : Math.random);
     case 'scratchClaim': return scratchClaim(player);
+    case 'redeem': return redeem(player, arg, now);
     case 'look': return setLook(player, arg);
     case 'restart': if (p.stage !== 'dead') return '아직 살아있어요'; { const o = arg && typeof arg === 'object' ? arg : {}; player.pet = newPet(now, 'char' in o ? o.char : p.char, 'custom' in o ? o.custom : p.custom, 'name' in o ? o.name : p.name); } return { msg: '새 알이 왔어요!' };
   }
@@ -227,6 +230,41 @@ function gacha(player, rnd = Math.random) {
     else { player.owned.push(k); player[it.type] = it.key; res.isNew = true; } }
   res.msg = `[${res.rarityKo}] ${res.name}` + (res.dup ? ` (중복! +${res.coins}코인)` : res.isNew ? ' 획득! 바로 썼어요' : ' 획득!');
   return res; }
+// v1.12 교환 코드. 새 코드는 이 표만 고치면 돼요 (영문 키는 대문자로).
+// coins: 코인, items: { 소모품키: 개수 }, owned: ['hair_pony'] 는 선택 (이미 있으면 안내만, 옷은 자동으로 입지 않아요)
+// perSave: 이 브라우저 저장에서 쓸 수 있는 횟수 (기본 1). expires: 이 시각(ms)부터 만료, 없으면 무기한
+// 전역 횟수 제한은 없어요. 펫은 각 브라우저 localStorage라 서버가 몇 번 쓰였는지 세지 않습니다.
+const CODES = {
+  WELCOME: { coins: 50, items: { snack: 2 } }, // 친구에게 알려주는 기본 선물. 저장당 1번
+  '복권선물': { items: { ticket: 1 } },
+};
+const normCode = s => String(s || '').trim().toUpperCase().replace(/\s+/g, '').slice(0, 24);
+function redeem(player, raw, now) {
+  const code = normCode(raw);
+  if (!code) return '코드를 입력해주세요';
+  const def = CODES[code];
+  if (!def) return '없는 코드예요';
+  if (def.expires && now >= def.expires) return '만료된 코드예요';
+  if (!Array.isArray(player.redeemed)) player.redeemed = [];
+  const limit = Number.isInteger(def.perSave) && def.perSave > 0 ? def.perSave : 1;
+  const used = player.redeemed.filter(k => k === code).length;
+  if (used >= limit) return '이미 사용한 코드예요';
+  const parts = [];
+  if (Number.isInteger(def.coins) && def.coins > 0) { addCoins(player, def.coins); parts.push('코인 ' + def.coins); }
+  if (def.items && typeof def.items === 'object') for (const [k, n] of Object.entries(def.items)) {
+    if (!SHOP[k] || SHOP[k].type !== 'consumable' || !Number.isInteger(n) || n <= 0) continue;
+    player.inventory[k] = (player.inventory[k] || 0) + n;
+    parts.push(SHOP[k].name + (n > 1 ? ' x' + n : ''));
+  }
+  if (Array.isArray(def.owned)) for (const k of def.owned) {
+    const it = SHOP[k]; if (!it || it.type === 'consumable') continue;
+    if ((player.owned || []).includes(k)) { parts.push(it.name + ' (이미 있어요)'); continue; }
+    player.owned.push(k); parts.push(it.name);
+  }
+  if (!parts.length) return '받을 수 있는 선물이 없어요';
+  player.redeemed.push(code);
+  return { msg: '선물 도착! ' + parts.join(', ') };
+}
 function lotteryView(d) {
   const name = d.coins ? d.coins + '코인' : SHOP[d.item].name + (d.n > 1 ? ' x' + d.n : '');
   return { id: d.id, name, coins: d.coins || 0, item: d.item || '', n: d.n || 0, jackpot: d.tier === 'jackpot', tier: d.tier };
@@ -278,6 +316,6 @@ function miniCoins(game, score) { score = Math.floor(+score);
   if (game === 'memory') return score >= 8 && score <= 200 ? Math.max(10, Math.min(25, 25 - (score - 8))) : 0; // score = moves (8 = perfect)
   if (game === 'pop') return score >= 0 && score <= MINI.pop.maxScore ? (score < 5 ? 5 : Math.min(25, 10 + Math.floor((score - 5) / 3))) : 0; // score = hearts tapped
   return 0; }
-const api = { CUSTOM, validCustom, setLook, cleanName, MINI, miniCoins, NCHAR, MIN, newPlayer, newPet, update, act, SHOP, CFG, POWER, publicPet, sanitizeSnap, snapOf, clamp, HAIRS, OUTFITS, ACCS, BOTTOMS, ITEM_FX, CONSUMABLES, GACHA, RARITY_KO, gacha, LOTTERY, scratchOpen, scratchClaim, TRAITS, COIN_CAP, maxOf, coinCap, raidHpOf, raidAtkOf, addCoins, priceOf, migrate, ownKey };
+const api = { CUSTOM, validCustom, setLook, cleanName, MINI, miniCoins, NCHAR, MIN, newPlayer, newPet, update, act, SHOP, CFG, POWER, publicPet, sanitizeSnap, snapOf, clamp, HAIRS, OUTFITS, ACCS, BOTTOMS, ITEM_FX, CONSUMABLES, GACHA, RARITY_KO, gacha, LOTTERY, scratchOpen, scratchClaim, CODES, normCode, redeem, TRAITS, COIN_CAP, maxOf, coinCap, raidHpOf, raidAtkOf, addCoins, priceOf, migrate, ownKey };
 if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.Game = api;
 })(typeof window !== 'undefined' ? window : globalThis);

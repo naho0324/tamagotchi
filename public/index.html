@@ -113,7 +113,10 @@
 <!-- modals -->
 <div id="nick-modal" class="modal hidden"><div class="box"><h2>반가워요!</h2><p>닉네임을 정해주세요</p>
   <input id="nick" maxlength="12" placeholder="닉네임"><button id="nick-ok" class="big b-green">시작하기</button></div></div>
-<div id="shop-modal" class="modal hidden"><div class="box"><h2>상점</h2><div id="shop-list"></div><h3>가방</h3><div id="inv-list"></div>
+<div id="shop-modal" class="modal hidden"><div class="box"><h2>상점</h2>
+  <div class="row redeem"><input id="redeem-code" maxlength="24" placeholder="교환 코드" autocomplete="off" autocapitalize="characters"><button id="redeem-go" class="small b-green">받기</button></div>
+  <p class="hint">운영자가 알려준 코드를 넣으면 선물이 와요</p>
+  <div id="shop-list"></div><h3>가방</h3><div id="inv-list"></div>
   <button class="big b-blue" onclick="closeModal('shop-modal')">닫기</button></div></div>
 <div id="wardrobe-modal" class="modal hidden"><div class="box"><h2>꾸미기</h2><canvas id="wPreview" width="240" height="250"></canvas><div id="w-try" class="w-try hidden"><span id="w-try-name"></span><div class="row"><button id="w-buy" class="small b-green"></button><button id="w-cancel" class="small">취소</button></div></div><p id="w-note" class="hint"></p>
   <div id="w-tabs" class="w-tabs"></div><div id="w-list" class="w-list"></div>

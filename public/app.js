@@ -237,6 +237,14 @@ function renderShop() {
     b.onclick = () => { if (k === 'ticket') return openScratch(); act('use', k); if (care) closeModal('shop-modal'); }; d.appendChild(b); il.appendChild(d); }
   if (!have.length) il.innerHTML = '<p class="hint">가방이 비었어요</p>';
 }
+function submitRedeem() {
+  if (!S) return; const el = $('#redeem-code');
+  const r = G.act(S, 'redeem', el.value, Date.now()); save(); renderHud(); sendSnap();
+  if (typeof r === 'string') return toast(r);
+  el.value = ''; toast(r.msg);
+}
+$('#redeem-go').onclick = submitRedeem;
+$('#redeem-code').onkeydown = e => { if (e.key === 'Enter') submitRedeem(); };
 function gachaBox() { const R = G.GACHA.rates, gd = document.createElement('div'); gd.className = 'gacha-box';
   gd.innerHTML = `<p class="hint">한 번에 🪙${G.GACHA.cost} · <b class="r-common">일반 ${R.common}%</b> 코인/간식 · <b class="r-rare">희귀 ${R.rare}%</b> 리본·꽃핀·상의 ${G.GACHA.rare.length - 2}종 · <b class="r-legend">전설 ${R.legend}%</b> 고양이귀·천사링·상의 ${G.GACHA.legend.length - 2}종 (상의는 뽑기 전용)<br>중복이면 코인 환급 (희귀 +${G.GACHA.dupRefund.rare}, 전설 +${G.GACHA.dupRefund.legend}) · ${G.GACHA.pity}번 안에 전설 확정 (지금 ${S.gachaPity || 0}/${G.GACHA.pity})</p>`;
   const gb = document.createElement('button'); gb.id = 'gacha-btn'; gb.className = 'big b-purple'; gb.textContent = `🎰 뽑기 (🪙${G.GACHA.cost})`; gb.onclick = pullGacha; gd.appendChild(gb); return gd; }

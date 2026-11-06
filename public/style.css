@@ -48,6 +48,7 @@ textarea { width: 100%; box-sizing: border-box; font: 11px monospace; border: 3p
 .trait{margin:6px 0;padding:6px 10px;background:#fff5f8;border:2px solid #1d2557;border-radius:8px;font-size:12px;line-height:1.5}.trait b{color:#c2455a;margin-right:4px;font-size:13px}
 .item .ico{width:32px;height:42px;object-fit:contain;image-rendering:pixelated;vertical-align:middle;margin-right:6px}
 #shop-list h3{margin:10px 0 4px}#shop-modal .box{max-height:90vh;overflow:auto}
+#shop-modal .redeem{min-width:0;width:100%}#shop-modal .redeem input{min-width:0}#shop-modal .redeem button{flex:none}
 #wardrobe-modal .box{max-height:94vh;overflow:auto}
 #wPreview{display:block;margin:0 auto;border:2px solid #1d2557;border-radius:8px;image-rendering:pixelated;width:200px;height:auto}
 .w-tabs{display:flex;gap:4px;flex-wrap:wrap;justify-content:center;margin:6px 0}.w-tabs .sel{background:#f7a8c4}
