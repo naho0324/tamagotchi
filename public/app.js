@@ -247,20 +247,41 @@ $('#redeem-go').onclick = submitRedeem;
 $('#redeem-code').onkeydown = e => { if (e.key === 'Enter') submitRedeem(); };
 function gachaBox() { const R = G.GACHA.rates, gd = document.createElement('div'); gd.className = 'gacha-box';
   gd.innerHTML = `<p class="hint">한 번에 🪙${G.GACHA.cost} · <b class="r-common">일반 ${R.common}%</b> 코인/간식 · <b class="r-rare">희귀 ${R.rare}%</b> 리본·꽃핀·상의 ${G.GACHA.rare.length - 2}종 · <b class="r-legend">전설 ${R.legend}%</b> 고양이귀·천사링·상의 ${G.GACHA.legend.length - 2}종 (상의는 뽑기 전용)<br>중복이면 코인 환급 (희귀 +${G.GACHA.dupRefund.rare}, 전설 +${G.GACHA.dupRefund.legend}) · ${G.GACHA.pity}번 안에 전설 확정 (지금 ${S.gachaPity || 0}/${G.GACHA.pity})</p>`;
-  const gb = document.createElement('button'); gb.id = 'gacha-btn'; gb.className = 'big b-purple'; gb.textContent = `🎰 뽑기 (🪙${G.GACHA.cost})`; gb.onclick = pullGacha; gd.appendChild(gb); return gd; }
+  const gb = document.createElement('button'); gb.id = 'gacha-btn'; gb.className = 'big b-purple'; gb.textContent = `🎰 뽑기 (🪙${G.GACHA.cost})`; gb.onclick = pullGacha; gd.appendChild(gb);
+  const g10 = document.createElement('button'); g10.id = 'gacha10-btn'; g10.className = 'big b-purple'; g10.textContent = `🎰 10연 (🪙${G.GACHA.tenCost})`; g10.onclick = pullGacha10; gd.appendChild(g10);
+  const note = document.createElement('p'); note.className = 'hint'; note.textContent = `10연은 10번 값에서 1번을 뺀 🪙${G.GACHA.tenCost} · 의상 4, 아이템 4, 코인 2`; gd.appendChild(note); return gd; }
 // ---- GACHA (뽑기): capsule shake -> rarity flash -> prize reveal ----
+let gMode = 'one';
+function gachaFace(r) {
+  const it = r.item && G.SHOP[r.item];
+  if (it && it.type === 'acc') return `<img src="assets/acc/${r.key}.png" alt="">`;
+  if (it && it.type === 'outfit') return `<img data-rc="1" src="assets/outfits/${isCustom() ? myLook() : 'x1'}/${S.pet.stage === 'adult' ? 'adult' : 'child'}/base_${r.key}.png" alt="">`;
+  return `<span class="g-emoji">${r.slot === 'coin' || (r.coins && !r.item) ? '🪙' : r.item === 'snack' ? '🍪' : r.item === 'medicine' ? '💊' : '🎁'}</span>`;
+}
 function pullGacha() {
   if (!S) return; const r = G.act(S, 'gacha', null, Date.now());
   if (typeof r === 'string') return toast(r);
-  save(); renderHud(); sendSnap();
+  save(); renderHud(); sendSnap(); gMode = 'one';
   const m = $('#gacha-modal'), cap = $('#g-capsule'), out = $('#g-result'); m.classList.remove('hidden');
+  $('#g-title').textContent = '뽑기!'; $('#g-again').textContent = '한 번 더'; $('#g-list').classList.add('hidden'); cap.classList.remove('hidden');
   m.dataset.rarity = r.rarity; cap.className = 'g-capsule shake'; out.className = 'g-result hidden'; $('#g-ok').disabled = true;
   setTimeout(() => { cap.className = 'g-capsule open r-' + r.rarity; }, 1100);
   setTimeout(() => { const gt = r.item && G.SHOP[r.item] && G.SHOP[r.item].type, img = gt === 'acc' ? `<img class="g-img" src="assets/acc/${r.key}.png" alt="">` : gt === 'outfit' ? `<img class="g-img" data-rc="1" src="assets/outfits/${isCustom() ? myLook() : 'x1'}/${S.pet.stage === 'adult' ? 'adult' : 'child'}/base_${r.key}.png" alt="">` : `<div class="g-emoji">${r.item === 'snack' ? '🍪' : r.item === 'medicine' ? '💊' : '🪙'}</div>`;
     out.innerHTML = `<div class="g-tier r-${r.rarity}">${'★'.repeat({ common: 1, rare: 2, legend: 3 }[r.rarity])} ${r.rarityKo}</div>${img}<div class="g-name">${r.name}</div><div class="hint">${r.dup ? `이미 있어요! 중복 환급 +${r.coins}코인` : r.isNew ? (gt === 'outfit' ? '새 상의! 바로 입었어요 ✨' + (isCustom() ? '' : ' (기본 몸에서 보여요)') : '새 머리장식! 바로 썼어요 ✨') : '가방/코인에 넣었어요'}</div>`;
     out.className = 'g-result pop r-' + r.rarity; rcIcons(out); $('#g-ok').disabled = false; }, 1600); }
+function pullGacha10() {
+  if (!S) return; const r = G.act(S, 'gacha10', null, Date.now());
+  if (typeof r === 'string') return toast(r);
+  save(); renderHud(); sendSnap(); gMode = 'ten';
+  const m = $('#gacha-modal'); m.classList.remove('hidden');
+  $('#g-title').textContent = '10연 뽑기!'; $('#g-again').textContent = '10연 한 번 더';
+  $('#g-capsule').classList.add('hidden'); $('#g-result').classList.add('hidden');
+  const list = $('#g-list'); list.classList.remove('hidden'); const slotKo = { costume: '의상', item: '아이템', coin: '코인' };
+  list.innerHTML = r.results.map(x => `<div class="g-row r-${x.rarity}">${gachaFace(x)}<b>${slotKo[x.slot]}</b><span>${esc(x.name)}</span><em>${x.dup ? `중복 +${x.coins}` : x.isNew ? '새 옷' : x.rarityKo}</em></div>`).join('') + `<p class="hint">${esc(r.msg)}</p>`;
+  rcIcons(list); $('#g-ok').disabled = false;
+}
 $('#g-ok').onclick = () => closeModal('gacha-modal');
-$('#g-again').onclick = () => { closeModal('gacha-modal'); pullGacha(); };
+$('#g-again').onclick = () => { closeModal('gacha-modal'); gMode === 'ten' ? pullGacha10() : pullGacha(); };
 // ---- SCRATCH (긁는 복권): drag/touch erases a silver foil; prize is claimed once enough is scratched ----
 let sc = null;
 function prizeInner(p) {

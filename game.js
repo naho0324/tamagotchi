@@ -47,7 +47,8 @@ const SHOP = {
 };
 // v1.5 뽑기 (gacha): 60 coins/pull. 일반 70% (coins/snack), 희귀 25% (리본/꽃핀), 전설 5% (뽑기 전용 고양이귀).
 // Duplicate 희귀 -> +40 coins, duplicate 전설 -> +150 coins. Pity: 전설 guaranteed on the 30th pull without one.
-const GACHA = { cost: 60, pity: 30, rates: { common: 70, rare: 25, legend: 5 }, dupRefund: { rare: 40, legend: 150 },
+const GACHA = { cost: 60, tenCost: 540, tenN: 10, pity: 30, rates: { common: 70, rare: 25, legend: 5 }, dupRefund: { rare: 40, legend: 150 },
+  // 10연 = 9×단품(60×9=540). 슬롯은 항상 의상 4, 소모품 4, 코인 2. 단품 천장은 그대로 두고 칸마다 +1.
   common: [{ coins: 20 }, { coins: 30 }, { coins: 45 }, { snack: 2 }, { medicine: 1 }],
   // v1.9 "전부 뽑기전용": every hair/top/accessory (except free base/none) comes only from 뽑기
   rare: ['acc_ribbon', 'acc_flower', 'hair_pony', 'hair_bob', 'hair_pigtail', 'hair_long', 'hair_bun', 'hair_spiky', 'outfit_hoodie', 'outfit_stripe', 'outfit_dress',
@@ -207,6 +208,7 @@ function act(player, action, arg, now) {
       player[type] = key; return { msg: '갈아입었어요!' };
     }
     case 'gacha': return gacha(player);
+    case 'gacha10': return gachaTen(player, typeof arg === 'function' ? arg : Math.random);
     case 'scratch': return scratchOpen(player, typeof arg === 'function' ? arg : Math.random);
     case 'scratchClaim': return scratchClaim(player);
     case 'redeem': return redeem(player, arg, now);
@@ -230,6 +232,32 @@ function gacha(player, rnd = Math.random) {
     else { player.owned.push(k); player[it.type] = it.key; res.isNew = true; } }
   res.msg = `[${res.rarityKo}] ${res.name}` + (res.dup ? ` (중복! +${res.coins}코인)` : res.isNew ? ' 획득! 바로 썼어요' : ' 획득!');
   return res; }
+function gachaTen(player, rnd = Math.random) {
+  if ((player.coins || 0) < GACHA.tenCost) return '코인이 부족해요';
+  player.coins -= GACHA.tenCost;
+  const slots = ['costume', 'costume', 'costume', 'costume', 'item', 'item', 'item', 'item', 'coin', 'coin'];
+  for (let i = slots.length - 1; i > 0; i--) { const j = Math.min(i, Math.floor(rnd() * (i + 1))); const t = slots[i]; slots[i] = slots[j]; slots[j] = t; }
+  const coins = GACHA.common.filter(g => g.coins), items = GACHA.common.filter(g => !g.coins);
+  const pick = a => a[Math.min(a.length - 1, Math.floor(rnd() * a.length))];
+  const results = slots.map(slot => {
+    player.gachaPity = (Number.isInteger(player.gachaPity) ? player.gachaPity : 0) + 1;
+    if (slot === 'coin') { const g = pick(coins); addCoins(player, g.coins); return { slot, rarity: 'common', rarityKo: RARITY_KO.common, name: g.coins + '코인', coins: g.coins, msg: g.coins + '코인' }; }
+    if (slot === 'item') { const g = pick(items), k = g.snack ? 'snack' : 'medicine', n = g.snack || g.medicine;
+      player.inventory[k] = (player.inventory[k] || 0) + n; const name = SHOP[k].name + ' x' + n;
+      return { slot, rarity: 'common', rarityKo: RARITY_KO.common, name, item: k, msg: name }; }
+    const forced = player.gachaPity >= GACHA.pity, roll = forced ? 0 : rnd() * 100;
+    const rarity = forced || roll < GACHA.rates.legend ? 'legend' : 'rare';
+    if (rarity === 'legend') player.gachaPity = 0;
+    const k = pick(GACHA[rarity]), it = SHOP[k];
+    const res = { slot, rarity, rarityKo: RARITY_KO[rarity], name: it.name, item: k, key: it.key };
+    if (player.owned.includes(k)) { const c = GACHA.dupRefund[rarity]; addCoins(player, c); res.dup = true; res.coins = c; }
+    else { player.owned.push(k); player[it.type] = it.key; res.isNew = true; }
+    res.msg = `[${res.rarityKo}] ${res.name}` + (res.dup ? ` (중복! +${res.coins}코인)` : res.isNew ? ' 획득!' : '');
+    return res;
+  });
+  const n = k => results.filter(r => r.slot === k).length;
+  return { ten: true, results, msg: `10연 완료! 의상 ${n('costume')} · 아이템 ${n('item')} · 코인 ${n('coin')}` };
+}
 // v1.12 교환 코드. 목록은 public/codes.js (브라우저) / 같은 파일을 Node가 읽어요.
 // 1회용 코드: node tools/make-code.js --coins 100
 function loadCodes() {
@@ -323,6 +351,6 @@ function miniCoins(game, score) { score = Math.floor(+score);
   if (game === 'memory') return score >= 8 && score <= 200 ? Math.max(10, Math.min(25, 25 - (score - 8))) : 0; // score = moves (8 = perfect)
   if (game === 'pop') return score >= 0 && score <= MINI.pop.maxScore ? (score < 5 ? 5 : Math.min(25, 10 + Math.floor((score - 5) / 3))) : 0; // score = hearts tapped
   return 0; }
-const api = { CUSTOM, validCustom, setLook, cleanName, MINI, miniCoins, NCHAR, MIN, newPlayer, newPet, update, act, SHOP, CFG, POWER, publicPet, sanitizeSnap, snapOf, clamp, HAIRS, OUTFITS, ACCS, BOTTOMS, ITEM_FX, CONSUMABLES, GACHA, RARITY_KO, gacha, LOTTERY, scratchOpen, scratchClaim, CODES, normCode, redeem, TRAITS, COIN_CAP, maxOf, coinCap, raidHpOf, raidAtkOf, addCoins, priceOf, migrate, ownKey };
+const api = { CUSTOM, validCustom, setLook, cleanName, MINI, miniCoins, NCHAR, MIN, newPlayer, newPet, update, act, SHOP, CFG, POWER, publicPet, sanitizeSnap, snapOf, clamp, HAIRS, OUTFITS, ACCS, BOTTOMS, ITEM_FX, CONSUMABLES, GACHA, RARITY_KO, gacha, gachaTen, LOTTERY, scratchOpen, scratchClaim, CODES, normCode, redeem, TRAITS, COIN_CAP, maxOf, coinCap, raidHpOf, raidAtkOf, addCoins, priceOf, migrate, ownKey };
 if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.Game = api;
 })(typeof window !== 'undefined' ? window : globalThis);
