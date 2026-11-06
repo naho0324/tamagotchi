@@ -16,15 +16,15 @@ assert.strictEqual(p.coins, 30); assert.strictEqual(p.inventory.snack, 1); asser
 const ok = G.act(p, 'redeem', 'welcome', now);
 assert.strictEqual(ok.msg, '선물 도착! 코인 50, 간식 x2');
 assert.strictEqual(p.coins, 80); assert.strictEqual(p.inventory.snack, 3); assert.deepStrictEqual(p.redeemed, ['WELCOME']);
-assert.strictEqual(G.act(p, 'redeem', 'WELCOME', now), '이미 사용한 코드예요');
+assert.strictEqual(G.act(p, 'redeem', 'WELCOME', now), '이 저장에서는 이미 사용한 코드예요');
 assert.strictEqual(p.coins, 80); assert.strictEqual(p.inventory.snack, 3);
 // spam
-assert.strictEqual(G.act(p, 'redeem', 'welcome', now), '이미 사용한 코드예요');
+assert.strictEqual(G.act(p, 'redeem', 'welcome', now), '이 저장에서는 이미 사용한 코드예요');
 
 const tix = G.act(p, 'redeem', '복권 선물', now);
 assert.strictEqual(tix.msg, '선물 도착! 긁는 복권');
 assert.strictEqual(p.inventory.ticket, 1);
-assert.strictEqual(G.act(p, 'redeem', '복권선물', now), '이미 사용한 코드예요');
+assert.strictEqual(G.act(p, 'redeem', '복권선물', now), '이 저장에서는 이미 사용한 코드예요');
 assert.strictEqual(p.inventory.ticket, 1);
 
 // egg and dead can still redeem (a gift, not a pet action)
@@ -40,7 +40,7 @@ p.pet.stage = 'dead';
 G.act(p, 'restart', null, now);
 assert.strictEqual(p.pet.stage, 'egg');
 assert.ok(p.redeemed.includes('WELCOME'));
-assert.strictEqual(G.act(p, 'redeem', 'WELCOME', now), '이미 사용한 코드예요');
+assert.strictEqual(G.act(p, 'redeem', 'WELCOME', now), '이 저장에서는 이미 사용한 코드예요');
 
 // injected codes: expiry, perSave, wardrobe, bad rewards, coin cap
 G.CODES.ONCE = { coins: 7, items: { soap: 1 }, owned: ['hair_pony'] };
@@ -61,7 +61,7 @@ assert.strictEqual(G.act(q, 'redeem', 'EMPTY', now), '받을 수 있는 선물�
 assert.ok(!q.redeemed.includes('EMPTY'));
 assert.strictEqual(G.act(q, 'redeem', 'TWICE', now).msg, '선물 도착! 코인 3');
 assert.strictEqual(G.act(q, 'redeem', 'TWICE', now).msg, '선물 도착! 코인 3');
-assert.strictEqual(G.act(q, 'redeem', 'TWICE', now), '이미 사용한 코드예요');
+assert.strictEqual(G.act(q, 'redeem', 'TWICE', now), '이 저장에서는 이미 사용한 코드예요');
 assert.strictEqual(q.redeemed.filter(k => k === 'TWICE').length, 2);
 const dup = G.act(q, 'redeem', 'DUP', now);
 assert.strictEqual(dup.msg, '선물 도착! 코인 1, 포니테일 (이미 있어요)');
