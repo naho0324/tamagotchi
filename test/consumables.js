@@ -20,6 +20,6 @@ Object.assign(s, { hunger: 0, happy: 0, clean: 0 }); G.update(p, now + 30 * MIN)
 G.update(p, now + 90 * MIN); assert.ok(p.pet.sick, 'immunity wore off'); G.CFG.rand = r0;
 // old save without new keys
 const old = mk(); old.inventory = { snack: 2, medicine: 1 }; G.migrate(old);
-assert.deepStrictEqual(old.inventory, { snack: 2, medicine: 1, meal: 0, drink: 0, soap: 0, toy: 0, vitamin: 0 });
+assert.deepStrictEqual(old.inventory, { snack: 2, medicine: 1, meal: 0, drink: 0, soap: 0, toy: 0, vitamin: 0, ticket: 0 });
 const bad = mk(); bad.inventory = { meal: -3, toy: 'x' }; G.migrate(bad); assert.strictEqual(bad.inventory.meal, 0); assert.strictEqual(bad.inventory.toy, 0);
 console.log('consumables ok');
