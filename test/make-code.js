@@ -15,11 +15,13 @@ try {
   assert.throws(() => tool.buildReward({ owned: ['snack'] }), /입을 수 있는/);
   const reward = tool.buildReward({ coins: 100, items: { snack: 2 }, owned: ['hair_pony'], uses: 1 });
   assert.strictEqual(reward.perSave, 1);
+  assert.strictEqual(reward.maxUses, 1);
   assert.strictEqual(reward.coins, 100);
   const made = tool.addCode({ coins: 100, items: {}, owned: [], uses: 1, len: 6 }, tmp);
   assert.match(made.code, /^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}$/);
   assert.strictEqual(made.reward.coins, 100);
   assert.strictEqual(made.reward.perSave, 1);
+  assert.strictEqual(made.reward.maxUses, 1);
   const again = tool.readCodes(tmp);
   assert.strictEqual(again[made.code].coins, 100);
   assert.strictEqual(again.WELCOME.coins, 50);
@@ -35,6 +37,8 @@ try {
   const loaded = tool.readCodes(tmp);
   assert.strictEqual(loaded[printed].coins, 100);
   assert.strictEqual(loaded[printed].perSave, 1);
+  assert.strictEqual(loaded[printed].maxUses, 1);
+  assert.ok(run.stdout.includes('전 세계에서 1번'));
 
   // wired into redeem: one-time per save
   const now = Date.now();
@@ -44,7 +48,7 @@ try {
   const r = G.act(p, 'redeem', printed, now);
   assert.strictEqual(r.msg, '선물 도착! 코인 100');
   assert.strictEqual(p.coins, coins0 + 100);
-  assert.strictEqual(G.act(p, 'redeem', printed, now), '이미 사용한 코드예요');
+  assert.strictEqual(G.act(p, 'redeem', printed, now), '이 저장에서는 이미 사용한 코드예요');
   assert.strictEqual(p.coins, coins0 + 100);
   delete G.CODES[printed];
 

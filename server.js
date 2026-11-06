@@ -10,8 +10,10 @@ const { BreakoutLobby } = require('./breakout');
 const { RaidLobby } = require('./raid');
 const Bomb = require('./duel');
 
+const { attachRedeem } = require('./redeemStore');
 const app = express(); app.use(express.static(path.join(__dirname, 'public')));
 app.get('/game.js', (q, r) => r.sendFile(path.join(__dirname, 'game.js'))); // shared care rules for the client
+attachRedeem(app); // POST /redeem — global one-shot codes, counted in data/redeem-uses.json
 app.get('/health', (q, r) => r.json({ ok: true, online: io.engine.clientsCount, rooms: rooms.size }));
 const server = http.createServer(app), io = new Server(server, { transports: ['websocket'], perMessageDeflate: false });
 

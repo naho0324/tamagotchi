@@ -212,6 +212,7 @@ function act(player, action, arg, now) {
     case 'scratch': return scratchOpen(player, typeof arg === 'function' ? arg : Math.random);
     case 'scratchClaim': return scratchClaim(player);
     case 'redeem': return redeem(player, arg, now);
+    case 'redeemCheck': return redeem(player, arg, now, { check: true });
     case 'look': return setLook(player, arg);
     case 'restart': if (p.stage !== 'dead') return '아직 살아있어요'; { const o = arg && typeof arg === 'object' ? arg : {}; player.pet = newPet(now, 'char' in o ? o.char : p.char, 'custom' in o ? o.custom : p.custom, 'name' in o ? o.name : p.name); } return { msg: '새 알이 왔어요!' };
   }
@@ -274,7 +275,7 @@ function loadCodes() {
 }
 const CODES = loadCodes();
 const normCode = s => String(s || '').trim().toUpperCase().replace(/\s+/g, '').slice(0, 24);
-function redeem(player, raw, now) {
+function redeem(player, raw, now, opt) {
   const code = normCode(raw);
   if (!code) return '코드를 입력해주세요';
   const def = CODES[code];
@@ -283,7 +284,8 @@ function redeem(player, raw, now) {
   if (!Array.isArray(player.redeemed)) player.redeemed = [];
   const limit = Number.isInteger(def.perSave) && def.perSave > 0 ? def.perSave : 1;
   const used = player.redeemed.filter(k => k === code).length;
-  if (used >= limit) return '이미 사용한 코드예요';
+  if (used >= limit) return '이 저장에서는 이미 사용한 코드예요';
+  if (opt && opt.check) return { ok: true, code };
   const parts = [];
   if (Number.isInteger(def.coins) && def.coins > 0) { addCoins(player, def.coins); parts.push('코인 ' + def.coins); }
   if (def.items && typeof def.items === 'object') for (const [k, n] of Object.entries(def.items)) {

@@ -237,11 +237,23 @@ function renderShop() {
     b.onclick = () => { if (k === 'ticket') return openScratch(); act('use', k); if (care) closeModal('shop-modal'); }; d.appendChild(b); il.appendChild(d); }
   if (!have.length) il.innerHTML = '<p class="hint">가방이 비었어요</p>';
 }
-function submitRedeem() {
-  if (!S) return; const el = $('#redeem-code');
-  const r = G.act(S, 'redeem', el.value, Date.now()); save(); renderHud(); sendSnap();
-  if (typeof r === 'string') return toast(r);
-  el.value = ''; toast(r.msg);
+let redeeming = false;
+async function submitRedeem() {
+  if (!S || redeeming) return; const el = $('#redeem-code');
+  const pre = G.act(S, 'redeemCheck', el.value, Date.now());
+  if (typeof pre === 'string') return toast(pre);
+  redeeming = true;
+  try {
+    let body;
+    try {
+      const res = await fetch('/redeem', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ code: el.value }) });
+      body = await res.json();
+    } catch { return toast('서버에 연결하지 못했어요'); }
+    if (!body.ok) return toast(body.msg || '이미 사용된 코드예요');
+    const r = G.act(S, 'redeem', el.value, Date.now()); save(); renderHud(); sendSnap();
+    if (typeof r === 'string') return toast(r);
+    el.value = ''; toast(r.msg);
+  } finally { redeeming = false; }
 }
 $('#redeem-go').onclick = submitRedeem;
 $('#redeem-code').onkeydown = e => { if (e.key === 'Enter') submitRedeem(); };
