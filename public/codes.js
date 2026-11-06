@@ -22,5 +22,10 @@ var REDEEM_CODES = {
     "coins": 100,
     "perSave": 1,
     "maxUses": 1
+  },
+  "KR7KTZ": {
+    "coins": 100,
+    "perSave": 1,
+    "maxUses": 1
   }
 };
