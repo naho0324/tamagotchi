@@ -65,13 +65,100 @@ setInterval(sendSnap, 5000);
 const BG = new Image(); BG.src = 'assets/room.jpg';
 const roomCv = $('#room'), rctx = roomCv.getContext('2d'); rctx.imageSmoothingEnabled = false;
 let fx = [];
+// Short pixel bursts for 밥/놀기/씻기/잠. Canvas-only, ~1.4s, buttons stay usable.
+const CARE_MS = 1400;
+let care = null; // { kind, item, t0 }
+const CARE_PX = {
+  rice: ['...YYYY...', '.YYYYYYYY.', 'YYYYYYYYYY', 'YYYRRRRYYY', 'YYYYYYYYYY', 'OYYYYYYYYO', '.OOOOOOOO.', '..OOOOOO..'],
+  cookie: ['..BBBBBB..', '.BBWWBBBB.', 'BBBBBBWWBB', 'BBWWBBBBBB', '.BBBBBBBB.', '..BBBBBB..'],
+  bento: ['OOOOOOOOOO', 'OYYYYYYYYO', 'OYRRRRRRYO', 'OYYYYYYYYO', 'OYGGGGGGYO', 'OOOOOOOOOO'],
+  ball: ['..OOOO..', '.OWWYYO.', 'OWWYYYYO', 'OYYYOOYO', '.OYYYYO.', '..OOOO..'],
+  toy: ['OOOOOO', 'ORRRRO', 'ORSSRO', 'ORRRRO', 'OOOOOO'],
+  heart: ['.HH.HH.', 'HHHHHHH', 'HHHHHHH', '.HHHHH.', '..HHH..', '...H...'],
+  bub: ['..OO..', '.O..WO', 'O....O', 'O....O', '.O..O.', '..OO..'],
+  soap: ['OOOOOOO', 'OPPPPPO', 'OPWWWPO', 'OPPPPPO', 'OOOOOOO'],
+  moon: ['..OOOO', '.OOYYO', 'OOYYYY', 'OOYYYY', '.OOYYO', '..OOOO'],
+  sun: ['...Y...', 'Y.YYY.Y', '.YYYYY.', 'YYYYYYY', '.YYYYY.', 'Y.YYY.Y', '...Y...'],
+  zzz: ['OOOO', '...O', '..O.', '.O..', 'OOOO'],
+};
+const CARE_PAL = { O: '#1d2557', Y: '#fff3c4', R: '#e85d7a', B: '#c48a4a', W: '#fff', G: '#7dba6a', P: '#ffd0e4', S: '#ffd23f', H: '#f27a9a' };
+function careKind(action, arg) {
+  if (action === 'feed') return 'eat';
+  if (action === 'play') return 'play';
+  if (action === 'wash') return 'wash';
+  if (action === 'sleep') return S.pet.sleeping ? 'sleep' : 'wake';
+  if (action === 'use') return { snack: 'eat', meal: 'eat', toy: 'play', soap: 'wash' }[arg] || '';
+  return '';
+}
+function careNudge(u, kind) {
+  if (u < 0) return [0, 0];
+  if (kind === 'eat') return [0, Math.sin(u * Math.PI * 5) * 4];
+  if (kind === 'play') return [Math.sin(u * Math.PI * 3) * 14, -Math.abs(Math.sin(u * Math.PI * 4)) * 18];
+  if (kind === 'wash') return [Math.sin(u * Math.PI * 8) * 5, 0];
+  if (kind === 'sleep') return [0, Math.min(8, u * 12)];
+  if (kind === 'wake') return [Math.sin(u * Math.PI * 2) * 4, -Math.sin(u * Math.PI) * 12];
+  return [0, 0];
+}
+function careTag(ctx, text, u) {
+  ctx.save();
+  ctx.globalAlpha = u < 0.12 ? u / 0.12 : u > 0.78 ? Math.max(0, (1 - u) / 0.22) : 1;
+  ctx.font = '18px Galmuri11, monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  const w = Math.ceil(ctx.measureText(text).width + 16);
+  ctx.fillStyle = '#fff5f8'; ctx.fillRect(240 - w / 2, 10, w, 22);
+  ctx.strokeStyle = '#1d2557'; ctx.lineWidth = 2; ctx.strokeRect(240 - w / 2 + 1, 11, w - 2, 20);
+  ctx.fillStyle = '#1d2557'; ctx.fillText(text, 240, 21);
+  ctx.restore();
+}
+function drawCare(ctx, u, c) {
+  ctx.save();
+  if (c.kind === 'eat') {
+    const food = c.item === 'snack' ? 'cookie' : c.item === 'meal' ? 'bento' : 'rice';
+    const bob = Math.sin(u * Math.PI * 4) * 10;
+    const sc = u < 0.8 ? 5 : Math.max(0, 5 * (1 - (u - 0.8) / 0.2));
+    if (sc > 0.5) drawGrid(ctx, CARE_PX[food], 188, 108 + bob, sc, CARE_PAL);
+    ctx.globalAlpha = 1; careTag(ctx, '냠냠!', u);
+  } else if (c.kind === 'play') {
+    const b = (u * 2) % 1, x = 150 + u * 150, y = 196 - Math.sin(b * Math.PI) * 78;
+    drawGrid(ctx, CARE_PX[c.item === 'toy' ? 'toy' : 'ball'], x, y, 4, CARE_PAL);
+    for (let i = 0; i < 3; i++) { const k = Math.max(0, u - i * 0.12); if (k <= 0) continue; ctx.globalAlpha = Math.max(0, 1 - k); drawGrid(ctx, CARE_PX.heart, 200 + i * 28, 150 - k * 70, 2, CARE_PAL); }
+    ctx.globalAlpha = 1; careTag(ctx, '신난다!', u);
+  } else if (c.kind === 'wash') {
+    for (let i = 0; i < 7; i++) {
+      const y = 220 - ((u * 160 + i * 28) % 170);
+      drawGrid(ctx, CARE_PX.bub, 150 + i * 26 + Math.sin(u * 8 + i) * 8, y, 2 + (i % 3), { O: i % 2 ? '#9fd3f7' : '#fff', W: '#fff' });
+    }
+    drawGrid(ctx, CARE_PX.soap, 160 + u * 120, 156, 3, CARE_PAL);
+    for (let i = 0; i < 5; i++) { ctx.fillStyle = '#9fd3f7'; ctx.fillRect(200 + i * 16, 20 + ((u * 200 + i * 30) % 120), 3, 6); }
+    careTag(ctx, '뽀득뽀득!', u);
+  } else if (c.kind === 'sleep') {
+    const bw = S && S.pet.stage === 'baby' ? 78 : 110, h = 16 + u * 58;
+    ctx.fillStyle = '#8eb4e8'; ctx.fillRect(240 - bw / 2, 238 - h, bw, h);
+    ctx.fillStyle = '#f7d7e4'; for (let y = 238 - h; y < 236; y += 8) ctx.fillRect(240 - bw / 2, y, bw, 3);
+    ctx.strokeStyle = '#1d2557'; ctx.lineWidth = 2; ctx.strokeRect(240 - bw / 2, 238 - h, bw, h);
+    ctx.globalAlpha = Math.min(1, u * 2); drawGrid(ctx, CARE_PX.moon, 36, 28, 3, CARE_PAL);
+    for (let i = 0; i < 3; i++) { const k = (u + i * 0.2) % 1; ctx.globalAlpha = 1 - k; drawGrid(ctx, CARE_PX.zzz, 300 + i * 18, 150 - k * 80, 2 + i, CARE_PAL); }
+    ctx.globalAlpha = 1; careTag(ctx, '쿨쿨...', u);
+  } else if (c.kind === 'wake') {
+    ctx.globalAlpha = Math.min(1, u * 2); drawGrid(ctx, CARE_PX.sun, 46, 24, 3, CARE_PAL);
+    ctx.globalAlpha = 1 - Math.max(0, u - 0.3) / 0.7;
+    const bw = S && S.pet.stage === 'baby' ? 78 : 110, h = 70 * (1 - u);
+    if (h > 4) { ctx.fillStyle = '#8eb4e8'; ctx.fillRect(240 - bw / 2, 238 - h, bw, h); }
+    ctx.globalAlpha = 1; careTag(ctx, '일어났어!', u);
+  }
+  ctx.restore();
+}
 function drawRoom(t) {
   rctx.drawImage(BG, 0, 0, 480, 270);
+  const u = care ? (t - care.t0) / CARE_MS : -1;
+  if (care && u >= 1) care = null;
+  const live = care && u >= 0 && u < 1 ? u : -1;
+  const [dx, dy] = careNudge(live, care && care.kind);
   if (S) {
     const look = { ...S.pet, hair: S.hair, outfit: S.outfit, acc: S.acc };
-    drawPet(rctx, 240, 238, S.pet.stage === 'egg' ? 120 : S.pet.stage === 'baby' ? 70 : S.pet.stage === 'child' ? 105 : 130, look, t);
+    drawPet(rctx, 240 + dx, 238 + dy, S.pet.stage === 'egg' ? 120 : S.pet.stage === 'baby' ? 70 : S.pet.stage === 'child' ? 105 : 130, look, t);
     if (S.pet.sleeping) { rctx.fillStyle = 'rgba(29,37,87,.25)'; rctx.fillRect(0, 0, 480, 270); }
   }
+  if (live >= 0) drawCare(rctx, live, care);
   fx = fx.filter(f => t - f.t0 < 1200);
   for (const f of fx) { const a = (t - f.t0) / 1200; rctx.globalAlpha = 1 - a; rctx.font = '26px sans-serif'; rctx.fillText(f.e, f.x, f.y - a * 50); }
   rctx.globalAlpha = 1;
@@ -81,7 +168,9 @@ const EMO = { feed: '🍚', play: '💗', wash: '🫧', sleep: '💤', use: '✨
 function act(action, arg) {
   if (!S) return; const r = G.act(S, action, arg, Date.now()); save(); renderHud(); sendSnap();
   if (typeof r === 'string') return toast(r);
-  if (EMO[action]) for (let i = 0; i < 3; i++) fx.push({ e: EMO[action], x: 200 + Math.random() * 80, y: 140 + Math.random() * 30, t0: performance.now() + i * 120 });
+  const kind = careKind(action, arg);
+  if (kind) care = { kind, item: action === 'use' ? arg : action, t0: performance.now() };
+  else if (EMO[action]) for (let i = 0; i < 3; i++) fx.push({ e: EMO[action], x: 200 + Math.random() * 80, y: 140 + Math.random() * 30, t0: performance.now() + i * 120 });
   if (action === 'restart') prevStage = 'egg';
   toast(r.msg + (r.coins ? ` (+${r.coins}코인)` : ''));
 }
@@ -145,7 +234,7 @@ function renderShop() {
     const name = pending ? `${G.SHOP[k].name} 긁는 중${n ? ` · 남은 ${n}장` : ''}` : `${G.SHOP[k].name} x${n}`;
     d.innerHTML = `<span>${itemIco(k)}${name}</span>`;
     const b = document.createElement('button'); b.className = 'small'; b.textContent = k === 'ticket' ? (pending ? '이어서' : '긁기') : '사용';
-    b.onclick = () => k === 'ticket' ? openScratch() : act('use', k); d.appendChild(b); il.appendChild(d); }
+    b.onclick = () => { if (k === 'ticket') return openScratch(); act('use', k); if (care) closeModal('shop-modal'); }; d.appendChild(b); il.appendChild(d); }
   if (!have.length) il.innerHTML = '<p class="hint">가방이 비었어요</p>';
 }
 function gachaBox() { const R = G.GACHA.rates, gd = document.createElement('div'); gd.className = 'gacha-box';
